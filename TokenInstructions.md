@@ -91,9 +91,7 @@ The application uses Azure token-based authentication:
 - Check your internet connection
 - Verify you have database access (contact instructor if needed)
 
-## Team Members
-- Will Christopher (wchristopher1@murraystate.edu)
-- Jesse Hutchens
+
 
 ## Course Information
 CIS 407 - Database Systems
