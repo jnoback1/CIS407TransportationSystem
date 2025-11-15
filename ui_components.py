@@ -149,6 +149,10 @@ class MetricCard(tk.Frame):
     def update_value(self, value):
         """Update the metric value"""
         self.value_label.configure(text=value)
+    
+    def update_value(self, new_value):
+        """Update the displayed value"""
+        self.value_label.config(text=new_value)
 
 
 class SectionHeader(tk.Frame):
