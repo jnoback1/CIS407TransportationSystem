@@ -73,10 +73,9 @@ class TransportationApp:
         if not view_class:
             messagebox.showerror("Error", f"View not found for tab: {tab_name}")
             return
-        if tab_name == "Overview":
-            self.current_view = view_class(self.content_frame, self.user_info)
-        else:
-            self.current_view = view_class(self.content_frame)
+        
+        # ✅ Always pass user_info to all views
+        self.current_view = view_class(self.content_frame, self.user_info)
         self.current_view.pack(fill="both", expand=True)
     
     def _check_database_connection(self):
