@@ -405,9 +405,9 @@ class AnalyticsView(tk.Frame):
     def _load_performance_metrics(self):
         """Load delivery performance metrics"""
         try:
-            # Average delivery time - convert TIME to minutes using DATEDIFF
+            # Average delivery time - Delivery_Time is already in minutes
             avg_delivery = self.repo.fetch_all("""
-                SELECT AVG(DATEDIFF(MINUTE, '00:00:00', Delivery_Time)) AS AvgTime
+                SELECT AVG(CAST(Delivery_Time AS FLOAT)) AS AvgTime
                 FROM DeliveryLog
                 WHERE Delivery_Time IS NOT NULL
             """)
@@ -416,7 +416,7 @@ class AnalyticsView(tk.Frame):
             
             # Average pickup time - convert TIME to minutes using DATEDIFF
             avg_pickup = self.repo.fetch_all("""
-                SELECT AVG(DATEDIFF(MINUTE, '00:00:00', Pickup_Time)) AS AvgTime
+                SELECT AVG(DATEDIFF(MINUTE, '00:00:00', CAST(Pickup_Time AS TIME))) AS AvgTime
                 FROM DeliveryLog
                 WHERE Pickup_Time IS NOT NULL
             """)
@@ -457,18 +457,18 @@ class AnalyticsView(tk.Frame):
             rate = round(success_rate[0]['SuccessRate'], 1) if success_rate and success_rate[0]['SuccessRate'] else 0
             self.success_rate_card.update_value(f"{rate}%")
             
-            # Fastest delivery - convert TIME to minutes
+            # Fastest delivery - Delivery_Time is in minutes
             fastest = self.repo.fetch_all("""
-                SELECT MIN(DATEDIFF(MINUTE, '00:00:00', Delivery_Time)) AS Fastest
+                SELECT MIN(Delivery_Time) AS Fastest
                 FROM DeliveryLog
                 WHERE Delivery_Time IS NOT NULL
             """)
             fastest_time = fastest[0]['Fastest'] if fastest and fastest[0]['Fastest'] else 0
             self.fastest_delivery_card.update_value(f"{fastest_time}")
             
-            # Slowest delivery - convert TIME to minutes
+            # Slowest delivery - Delivery_Time is in minutes
             slowest = self.repo.fetch_all("""
-                SELECT MAX(DATEDIFF(MINUTE, '00:00:00', Delivery_Time)) AS Slowest
+                SELECT MAX(Delivery_Time) AS Slowest
                 FROM DeliveryLog
                 WHERE Delivery_Time IS NOT NULL
             """)
@@ -526,7 +526,7 @@ class AnalyticsView(tk.Frame):
                 SELECT 
                     CAST(Order_Date AS DATE) AS DeliveryDate,
                     COUNT(*) AS TotalDeliveries,
-                    AVG(DATEDIFF(MINUTE, '00:00:00', Delivery_Time)) AS AvgDeliveryTime
+                    AVG(CAST(Delivery_Time AS FLOAT)) AS AvgDeliveryTime
                 FROM DeliveryLog
                 WHERE Order_Date >= DATEADD(DAY, -7, GETDATE())
                   AND Delivery_Time IS NOT NULL
@@ -565,11 +565,11 @@ class AnalyticsView(tk.Frame):
                 # Hourly distribution (if data available)
                 hourly_data = self.repo.fetch_all("""
                     SELECT 
-                        DATEPART(HOUR, Order_Date) AS DeliveryHour,
+                        DATEPART(HOUR, CAST(Order_Time AS TIME)) AS DeliveryHour,
                         COUNT(*) AS TotalDeliveries
                     FROM DeliveryLog
                     WHERE Order_Date >= DATEADD(DAY, -7, GETDATE())
-                    GROUP BY DATEPART(HOUR, Order_Date)
+                    GROUP BY DATEPART(HOUR, CAST(Order_Time AS TIME))
                     ORDER BY DeliveryHour
                 """)
                 

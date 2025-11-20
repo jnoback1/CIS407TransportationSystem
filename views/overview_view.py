@@ -129,32 +129,32 @@ class OverviewView(tk.Frame):
             if not self.repo:
                 self.repo = AzureSqlRepository()
 
-            # Active deliveries → those still in transit (no delivery time yet)
+            # Active deliveries → Status is 'In Transit'
             active = self.repo.fetch_all(
-                "SELECT COUNT(*) AS Total FROM DeliveryLog WHERE Delivery_Time IS NULL"
+                "SELECT COUNT(*) AS Total FROM DeliveryLog WHERE Status = 'In Transit'"
             )
             self.active_card.update_value(str(active[0]['Total']) if active else "0")
 
-            # Today's deliveries → those delivered today
+            # Today's deliveries → Status is 'Delivered' and Date is Today
             today = self.repo.fetch_all(
                 """
                 SELECT COUNT(*) AS Total
                 FROM DeliveryLog
-                WHERE Delivery_Time IS NOT NULL
+                WHERE Status = 'Delivered'
                 AND CAST(Order_Date AS DATE) = CAST(GETDATE() AS DATE)
                 """
             )
             self.today_card.update_value(str(today[0]['Total']) if today else "0")
 
-            # Pending deliveries → those not yet picked up (Pickup_Time is NULL)
+            # Pending deliveries → Status is 'Pending' or 'Ordered'
             pending = self.repo.fetch_all(
-                "SELECT COUNT(*) AS Total FROM DeliveryLog WHERE Pickup_Time IS NULL"
+                "SELECT COUNT(*) AS Total FROM DeliveryLog WHERE Status IN ('Pending', 'Ordered')"
             )
             self.pending_card.update_value(str(pending[0]['Total']) if pending else "0")
 
-            # Active vehicles → vehicles currently on delivery (Delivery_Time IS NULL)
+            # Active vehicles → vehicles currently on delivery (Status is 'In Transit')
             vehicles = self.repo.fetch_all(
-                "SELECT COUNT(DISTINCT VehicleID) AS Total FROM DeliveryLog WHERE Delivery_Time IS NULL"
+                "SELECT COUNT(DISTINCT VehicleID) AS Total FROM DeliveryLog WHERE Status = 'In Transit'"
             )
             self.vehicles_card.update_value(str(vehicles[0]['Total']) if vehicles else "0")
             
@@ -166,8 +166,8 @@ class OverviewView(tk.Frame):
                     Delivery_Time,
                     'Delivery completed for order ' + CAST(Order_ID AS NVARCHAR(50)) AS Message
                 FROM dbo.DeliveryLog
-                WHERE Delivery_Time IS NOT NULL
-                ORDER BY Order_Date DESC, Delivery_Time DESC
+                WHERE Status = 'Delivered'
+                ORDER BY Order_Date DESC
             """)
             
             self.cache_timestamp = datetime.now()

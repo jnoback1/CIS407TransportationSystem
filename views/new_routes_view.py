@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import config
 from ui_components import MetricCard, SectionHeader
 from backend.repository import AzureSqlRepository
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 
 class NewRoutesView(tk.Frame):
@@ -114,8 +114,20 @@ class NewRoutesView(tk.Frame):
         )
         self.order_id_entry.grid(row=0, column=1, sticky="ew", pady=5, padx=(10, 0))
         
+        # Start Location (Depot)
+        self._create_form_field(fields_frame, "Start Location:", 1)
+        self.start_location_var = tk.StringVar(value="Central Depot")
+        self.start_location_combo = ttk.Combobox(
+            fields_frame,
+            textvariable=self.start_location_var,
+            values=["Central Depot", "North Warehouse", "South Distribution Center"],
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
+        )
+        self.start_location_combo.grid(row=1, column=1, sticky="ew", pady=5, padx=(10, 0))
+
         # Vehicle Selection
-        self._create_form_field(fields_frame, "Assign Vehicle:", 1)
+        self._create_form_field(fields_frame, "Assign Vehicle:", 2)
         self.vehicle_var = tk.StringVar()
         self.vehicle_combo = ttk.Combobox(
             fields_frame,
@@ -123,14 +135,14 @@ class NewRoutesView(tk.Frame):
             state="readonly",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
         )
-        self.vehicle_combo.grid(row=1, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.vehicle_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=(10, 0))
         self.vehicle_combo.bind("<<ComboboxSelected>>", self._on_vehicle_selected)
         
         # Store Selection (Multi-select)
-        self._create_form_field(fields_frame, "Delivery Stores:", 2, align_top=True)
+        self._create_form_field(fields_frame, "Delivery Stores:", 3, align_top=True)
         
         stores_container = tk.Frame(fields_frame, bg=config.BG_WHITE)
-        stores_container.grid(row=2, column=1, sticky="ew", pady=5, padx=(10, 0))
+        stores_container.grid(row=3, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Listbox with scrollbar for store selection
         stores_scroll = tk.Scrollbar(stores_container, orient="vertical")
@@ -144,12 +156,13 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         stores_scroll.config(command=self.stores_listbox.yview)
+        self.stores_listbox.bind('<<ListboxSelect>>', lambda e: self._update_summary())
         
         self.stores_listbox.pack(side="left", fill="both", expand=True)
         stores_scroll.pack(side="right", fill="y")
         
         # Order Date
-        self._create_form_field(fields_frame, "Order Date:", 3)
+        self._create_form_field(fields_frame, "Order Date:", 4)
         self.order_date_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -157,13 +170,13 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.order_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
-        self.order_date_entry.grid(row=3, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.order_date_entry.grid(row=4, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Priority
-        self._create_form_field(fields_frame, "Priority:", 4)
+        self._create_form_field(fields_frame, "Priority:", 5)
         self.priority_var = tk.StringVar(value="Normal")
         priority_frame = tk.Frame(fields_frame, bg=config.BG_WHITE)
-        priority_frame.grid(row=4, column=1, sticky="ew", pady=5, padx=(10, 0))
+        priority_frame.grid(row=5, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         for priority in ["Low", "Normal", "High", "Urgent"]:
             tk.Radiobutton(
@@ -177,7 +190,7 @@ class NewRoutesView(tk.Frame):
             ).pack(side="left", padx=5)
         
         # Estimated Pickup Time
-        self._create_form_field(fields_frame, "Est. Pickup Time (min):", 5)
+        self._create_form_field(fields_frame, "Est. Pickup Time (min):", 6)
         self.pickup_time_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -185,10 +198,10 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.pickup_time_entry.insert(0, "30")
-        self.pickup_time_entry.grid(row=5, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.pickup_time_entry.grid(row=6, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Estimated Delivery Time
-        self._create_form_field(fields_frame, "Est. Delivery Time (min):", 6)
+        self._create_form_field(fields_frame, "Est. Delivery Time (min):", 7)
         self.delivery_time_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -196,10 +209,10 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.delivery_time_entry.insert(0, "45")
-        self.delivery_time_entry.grid(row=6, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.delivery_time_entry.grid(row=7, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Notes
-        self._create_form_field(fields_frame, "Notes (Optional):", 7, align_top=True)
+        self._create_form_field(fields_frame, "Notes (Optional):", 8, align_top=True)
         self.notes_text = tk.Text(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
@@ -208,7 +221,7 @@ class NewRoutesView(tk.Frame):
             borderwidth=1,
             wrap="word"
         )
-        self.notes_text.grid(row=7, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.notes_text.grid(row=8, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Configure grid weights
         fields_frame.columnconfigure(1, weight=1)
@@ -229,6 +242,20 @@ class NewRoutesView(tk.Frame):
             padx=20,
             pady=8,
             command=self._clear_form
+        ).pack(side="left", padx=(0, 10))
+        
+        tk.Button(
+            buttons_frame,
+            text="✨ Optimize",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
+            bg="#17A2B8",
+            fg=config.BG_WHITE,
+            activebackground="#138496",
+            relief="flat",
+            cursor="hand2",
+            padx=20,
+            pady=8,
+            command=self._optimize_route
         ).pack(side="left", padx=(0, 10))
         
         tk.Button(
@@ -389,29 +416,29 @@ class NewRoutesView(tk.Frame):
             
             # Load vehicles
             self.vehicles_data = self.repo.fetch_all("""
-                SELECT VehicleID, Type, Capacity, License_Plate
+                SELECT VehicleID, Model, Year, Miles, Area
                 FROM Vehicles
                 ORDER BY VehicleID
             """)
             
             if self.vehicles_data:
                 vehicle_options = [
-                    f"{v['VehicleID']} - {v['Type']} ({v['Capacity']} capacity)"
+                    f"{v['VehicleID']} - {v['Model']} ({v['Year']})"
                     for v in self.vehicles_data
                 ]
                 self.vehicle_combo['values'] = vehicle_options
             
             # Load stores
             self.stores_data = self.repo.fetch_all("""
-                SELECT StoreID, Store_Name, City, State
+                SELECT StoreID, lat, lon
                 FROM Stores
-                ORDER BY Store_Name
+                ORDER BY StoreID
             """)
             
             if self.stores_data:
                 self.stores_listbox.delete(0, tk.END)
                 for store in self.stores_data:
-                    store_display = f"{store['StoreID']} - {store['Store_Name']} ({store['City']}, {store['State']})"
+                    store_display = f"Store {store['StoreID']} (Lat: {store['lat']}, Lon: {store['lon']})"
                     self.stores_listbox.insert(tk.END, store_display)
             
             # Update quick stats
@@ -439,9 +466,10 @@ class NewRoutesView(tk.Frame):
         if selected_idx >= 0 and self.vehicles_data:
             vehicle = self.vehicles_data[selected_idx]
             vehicle_info = (
-                f"🚚 {vehicle['Type']}\n"
-                f"Capacity: {vehicle['Capacity']} units\n"
-                f"License: {vehicle.get('License_Plate', 'N/A')}"
+                f"🚚 {vehicle['Model']}\n"
+                f"Year: {vehicle['Year']}\n"
+                f"Miles: {vehicle['Miles']}\n"
+                f"Area: {vehicle['Area']}"
             )
             self.vehicle_info_label.config(text=vehicle_info)
         
@@ -458,13 +486,28 @@ class NewRoutesView(tk.Frame):
         
         # Update time estimates
         try:
-            pickup_time = int(self.pickup_time_entry.get() or 0)
-            delivery_time = int(self.delivery_time_entry.get() or 0)
+            # Simple dynamic estimate: 30 min base + 15 min per store
+            base_pickup = 30
+            per_store_delivery = 15
+            
+            pickup_time = base_pickup
+            delivery_time = stores_count * per_store_delivery
+            
+            # Update entries if they haven't been manually edited (simple check)
+            # For now, just update the label to show the calculated estimate
+            
             total_time = pickup_time + delivery_time
             
             self.time_estimate_label.config(
                 text=f"Total: {total_time} minutes\nPickup: {pickup_time} min | Delivery: {delivery_time} min"
             )
+            
+            # Also update the entry fields with these estimates
+            self.pickup_time_entry.delete(0, tk.END)
+            self.pickup_time_entry.insert(0, str(pickup_time))
+            self.delivery_time_entry.delete(0, tk.END)
+            self.delivery_time_entry.insert(0, str(delivery_time))
+            
         except ValueError:
             self.time_estimate_label.config(
                 text="Invalid time values"
@@ -524,14 +567,44 @@ class NewRoutesView(tk.Frame):
             vehicle_id = vehicle['VehicleID']
             
             # Insert into DeliveryLog
-            # Note: Adjust based on your actual database schema
-            for store_idx in selected_stores:
+            # Note: Order_ID is nvarchar, so it needs quotes
+            # Note: Order_Time is required, so we provide a default value
+            # Note: Status is 'Pending' initially
+            # Note: Pickup_Time and Delivery_Time are NOT NULL
+            
+            current_dt = datetime.now()
+            current_time_str = current_dt.strftime("%H:%M:%S")
+            
+            # Calculate estimated pickup time (Time of day)
+            # Assuming pickup_time input is minutes from now
+            est_pickup_dt = current_dt + timedelta(minutes=pickup_time)
+            est_pickup_str = est_pickup_dt.strftime("%H:%M:%S")
+            
+            # Delivery_Time is smallint (duration in minutes)
+            # We use the input delivery_time directly
+            
+            for i, store_idx in enumerate(selected_stores):
                 store = self.stores_data[store_idx]
                 store_id = store['StoreID']
                 
+                # Append suffix to Order ID for multiple stores if needed
+                final_order_id = f"{order_id}-{i+1}" if len(selected_stores) > 1 else order_id
+                
                 self.repo.execute(f"""
-                    INSERT INTO DeliveryLog (Order_ID, VehicleID, Order_Date)
-                    VALUES ({order_id}, {vehicle_id}, '{order_date}')
+                    INSERT INTO DeliveryLog (
+                        Order_ID, VehicleID, Order_Date, Order_Time, 
+                        Pickup_Time, Delivery_Time, StoreID, Status
+                    )
+                    VALUES (
+                        '{final_order_id}', 
+                        {vehicle_id}, 
+                        '{order_date}', 
+                        '{current_time_str}', 
+                        '{est_pickup_str}',
+                        {delivery_time},
+                        {store_id},
+                        'Pending'
+                    )
                 """)
             
             messagebox.showinfo(
@@ -552,6 +625,71 @@ class NewRoutesView(tk.Frame):
             logging.error(f"Error creating route: {e}")
             messagebox.showerror("Error", f"Failed to create route:\n{str(e)[:200]}")
     
+    def _optimize_route(self):
+        """Suggest best vehicle and time estimates based on historical data"""
+        selected_stores_indices = self.stores_listbox.curselection()
+        if not selected_stores_indices:
+            messagebox.showinfo("Optimization", "Please select delivery stores first to get recommendations.")
+            return
+            
+        try:
+            store_ids = [str(self.stores_data[i]['StoreID']) for i in selected_stores_indices]
+            store_ids_str = ",".join(store_ids)
+            
+            # 1. Find best vehicle (lowest avg delivery time for these stores)
+            best_vehicle_query = f"""
+                SELECT TOP 1 VehicleID, AVG(Delivery_Time) as AvgTime
+                FROM DeliveryLog
+                WHERE StoreID IN ({store_ids_str})
+                AND Status = 'Delivered'
+                AND Delivery_Time > 0
+                GROUP BY VehicleID
+                ORDER BY AvgTime ASC
+            """
+            best_vehicle = self.repo.fetch_all(best_vehicle_query)
+            
+            vehicle_found = False
+            if best_vehicle:
+                best_vehicle_id = best_vehicle[0]['VehicleID']
+                # Find index in combo
+                for i, v in enumerate(self.vehicles_data):
+                    if v['VehicleID'] == best_vehicle_id:
+                        self.vehicle_combo.current(i)
+                        self._on_vehicle_selected(None)
+                        vehicle_found = True
+                        break
+            
+            # 2. Estimate delivery time based on historical average
+            avg_time_query = f"""
+                SELECT AVG(Delivery_Time) as AvgTime
+                FROM DeliveryLog
+                WHERE StoreID IN ({store_ids_str})
+                AND Status = 'Delivered'
+                AND Delivery_Time > 0
+            """
+            avg_time_result = self.repo.fetch_all(avg_time_query)
+            
+            msg = "Route Optimized!\n\n"
+            if vehicle_found:
+                msg += "• Selected best performing vehicle based on history\n"
+            else:
+                msg += "• No specific vehicle data found for these stores\n"
+
+            if avg_time_result and avg_time_result[0]['AvgTime']:
+                estimated_time = int(avg_time_result[0]['AvgTime'])
+                # Update delivery time entry
+                self.delivery_time_entry.delete(0, tk.END)
+                self.delivery_time_entry.insert(0, str(estimated_time))
+                msg += f"• Updated delivery time estimate to {estimated_time} min (historical average)"
+            else:
+                msg += "• No historical time data available for estimates"
+                
+            messagebox.showinfo("Optimization Complete", msg)
+                
+        except Exception as e:
+            logging.error(f"Optimization error: {e}")
+            messagebox.showerror("Error", f"Optimization failed: {e}")
+
     def destroy(self):
         """Clean up resources"""
         if self.repo:

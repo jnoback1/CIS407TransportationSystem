@@ -229,12 +229,29 @@ class ActiveRoutesView(tk.Frame):
         table_frame.grid_columnconfigure(0, weight=1)
         
         # Row colors and selection
-        self.routes_tree.tag_configure('on_time', background='#D4EDDA', foreground='#155724')
-        self.routes_tree.tag_configure('delayed', background='#FFF3CD', foreground='#856404')
-        self.routes_tree.tag_configure('critical', background='#F8D7DA', foreground='#721C24')
-        self.routes_tree.tag_configure('selected', background=config.PRIMARY_COLOR)
+        # Using darker text for better contrast on light backgrounds
+        self.routes_tree.tag_configure('on_time', background='#D4EDDA', foreground='#000000')
+        self.routes_tree.tag_configure('delayed', background='#FFF3CD', foreground='#000000')
+        self.routes_tree.tag_configure('critical', background='#F8D7DA', foreground='#000000')
+        self.routes_tree.tag_configure('selected', background=config.PRIMARY_COLOR, foreground='#FFFFFF')
         
-        # Bind selection event
+        # Configure Treeview style for better contrast
+        style = ttk.Style()
+        style.configure("Treeview", 
+            background="#FFFFFF",
+            foreground="#000000",
+            fieldbackground="#FFFFFF",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
+        )
+        style.configure("Treeview.Heading", 
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
+            background="#E9ECEF",
+            foreground="#000000"
+        )
+        style.map("Treeview", 
+            background=[('selected', config.PRIMARY_COLOR)],
+            foreground=[('selected', '#FFFFFF')]
+        )
         self.routes_tree.bind("<<TreeviewSelect>>", self._on_route_selected)
     
     def _create_route_details_panel(self, parent):
@@ -326,6 +343,7 @@ class ActiveRoutesView(tk.Frame):
                 self.repo = AzureSqlRepository()
             
             # Fetch active routes (deliveries in transit)
+            # Note: Using Status='In Transit' or Delivery_Time IS NULL for active routes
             routes = self.repo.fetch_all("""
                 SELECT 
                     dl.Order_ID,
@@ -333,14 +351,13 @@ class ActiveRoutesView(tk.Frame):
                     dl.Order_Date,
                     dl.Pickup_Time,
                     dl.Delivery_Time,
-                    DATEDIFF(SECOND, '00:00:00', CAST(dl.Pickup_Time AS TIME)) / 60.0 AS Pickup_Minutes,
-                    DATEDIFF(SECOND, '00:00:00', CAST(dl.Delivery_Time AS TIME)) / 60.0 AS Delivery_Minutes,
-                    v.Type AS Vehicle_Type,
-                    v.Capacity AS Vehicle_Capacity
+                    DATEDIFF(MINUTE, '00:00:00', CAST(dl.Pickup_Time AS TIME)) AS Pickup_Minutes,
+                    v.Model AS Vehicle_Type,
+                    v.Year AS Vehicle_Year
                 FROM DeliveryLog dl
                 LEFT JOIN Vehicles v ON dl.VehicleID = v.VehicleID
-                WHERE dl.Pickup_Time IS NOT NULL 
-                  AND dl.Delivery_Time IS NULL
+                WHERE dl.Status = 'In Transit' 
+                   OR (dl.Pickup_Time IS NOT NULL AND dl.Delivery_Time IS NULL)
                 ORDER BY dl.Order_Date DESC
             """)
             
@@ -441,16 +458,18 @@ class ActiveRoutesView(tk.Frame):
         """Show detailed information for selected route"""
         try:
             # Fetch detailed route info
+            # Note: Order_ID is nvarchar, so it needs quotes in the query
             details = self.repo.fetch_all(f"""
                 SELECT 
                     dl.*,
-                    v.Type AS Vehicle_Type,
-                    v.Capacity AS Vehicle_Capacity,
-                    v.License_Plate,
-                    DATEDIFF(SECOND, '00:00:00', CAST(dl.Pickup_Time AS TIME)) / 60.0 AS Pickup_Minutes
+                    v.Model AS Vehicle_Type,
+                    v.Year AS Vehicle_Year,
+                    v.Miles AS Vehicle_Miles,
+                    v.Area AS Vehicle_Area,
+                    DATEDIFF(MINUTE, '00:00:00', CAST(dl.Pickup_Time AS TIME)) AS Pickup_Minutes
                 FROM DeliveryLog dl
                 LEFT JOIN Vehicles v ON dl.VehicleID = v.VehicleID
-                WHERE dl.Order_ID = {route_id}
+                WHERE dl.Order_ID = '{route_id}'
             """)
             
             if not details or len(details) == 0:
@@ -467,14 +486,14 @@ class ActiveRoutesView(tk.Frame):
             self._add_detail_section("Route Information", [
                 ("Order ID", route['Order_ID']),
                 ("Order Date", str(route['Order_Date'])[:19] if route['Order_Date'] else "N/A"),
-                ("Status", "In Transit" if route['Pickup_Time'] and not route['Delivery_Time'] else "Unknown")
+                ("Status", route.get('Status', 'Unknown'))
             ])
             
             self._add_detail_section("Vehicle Information", [
                 ("Vehicle ID", route['VehicleID'] if route['VehicleID'] else "Not Assigned"),
-                ("Type", route.get('Vehicle_Type', 'N/A')),
-                ("Capacity", f"{route.get('Vehicle_Capacity', 'N/A')} units"),
-                ("License Plate", route.get('License_Plate', 'N/A'))
+                ("Model", route.get('Vehicle_Type', 'N/A')),
+                ("Year", route.get('Vehicle_Year', 'N/A')),
+                ("Area", route.get('Vehicle_Area', 'N/A'))
             ])
             
             self._add_detail_section("Timing Information", [
@@ -567,10 +586,11 @@ class ActiveRoutesView(tk.Frame):
         if messagebox.askyesno("Confirm", f"Mark route {route_id} as complete?"):
             try:
                 # Update delivery time to current time
+                # Note: Order_ID is nvarchar, so it needs quotes
                 self.repo.execute(f"""
                     UPDATE DeliveryLog
-                    SET Delivery_Time = CAST(GETDATE() AS TIME)
-                    WHERE Order_ID = {route_id}
+                    SET Delivery_Time = DATEDIFF(MINUTE, '00:00:00', CAST(GETDATE() AS TIME))
+                    WHERE Order_ID = '{route_id}'
                 """)
                 
                 messagebox.showinfo("Success", f"Route {route_id} marked as complete!")
