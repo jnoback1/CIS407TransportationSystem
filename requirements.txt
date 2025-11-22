@@ -1,2 +1,5 @@
 pyodbc
 azure-identity
+python-dotenv
+tkintermapview>=1.29
+requests>=2.31.0
