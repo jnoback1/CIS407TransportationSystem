@@ -329,7 +329,7 @@ class ActiveRoutesView(tk.Frame):
         
         empty_label = tk.Label(
             self.details_frame,
-            text="← Select a route to view details",
+            text="Select a route to view details",
             font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE),
             bg=config.BG_WHITE,
             fg=config.TEXT_SECONDARY

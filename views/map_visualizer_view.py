@@ -327,13 +327,13 @@ class MapVisualizerView(tk.Frame):
         ).pack(side="left", padx=(0, 15))
         
         # Store marker
-        self._create_legend_item(legend_content, "🏪", "Stores", "#4CAF50")
+        self._create_legend_item(legend_content, "●", "Stores", "#4CAF50")
         
         # Selected/highlighted route
         self._create_legend_item(legend_content, "━", "Highlighted Route", "#E91E63")
         
         # Vehicle marker
-        self._create_legend_item(legend_content, "🚚", "Vehicles", "#2196F3")
+        self._create_legend_item(legend_content, "●", "Vehicles", "#2196F3")
     
     def _create_legend_item(self, parent, icon, label, color):
         """Create a legend item"""
