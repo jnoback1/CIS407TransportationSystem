@@ -96,7 +96,7 @@ class MapVisualizerView(tk.Frame):
         # Title
         title_label = tk.Label(
             header_frame, 
-            text="🗺️ Route Map Visualizer",
+            text="Route Map Visualizer",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_LIGHT, 
             fg=config.TEXT_PRIMARY
@@ -120,7 +120,7 @@ class MapVisualizerView(tk.Frame):
         # Refresh button
         tk.Button(
             controls_frame,
-            text="🔄 Refresh",
+            text="Refresh",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
             bg=config.BUTTON_BG,
             fg=config.BUTTON_TEXT,
@@ -143,7 +143,7 @@ class MapVisualizerView(tk.Frame):
         # Title
         tk.Label(
             panel_content,
-            text="🛣️ Route Planner - Select Route to Highlight",
+            text="Route Planner - Select Route to Highlight",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -190,7 +190,7 @@ class MapVisualizerView(tk.Frame):
         # Show Route button
         tk.Button(
             panel_content,
-            text="🚗 Highlight Route",
+            text="Highlight Route",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
             bg=config.PRIMARY_COLOR,
             fg=config.BUTTON_TEXT,
@@ -205,7 +205,7 @@ class MapVisualizerView(tk.Frame):
         # Clear Route button
         tk.Button(
             panel_content,
-            text="🗑️ Clear Highlight",
+            text="Clear Highlight",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
             bg=config.BG_LIGHT,
             fg=config.TEXT_PRIMARY,
@@ -252,7 +252,7 @@ class MapVisualizerView(tk.Frame):
             # Create loading indicator
             self.loading_label = tk.Label(
                 self.map_widget,
-                text="⏳ Loading map data...",
+                text="Loading map data...",
                 font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
                 bg="white",
                 fg=config.PRIMARY_COLOR,
@@ -275,7 +275,7 @@ class MapVisualizerView(tk.Frame):
         
         tk.Label(
             placeholder_frame,
-            text="🗺️",
+            text="Map",
             font=(config.FONT_FAMILY, 72),
             bg=config.BG_WHITE,
             fg=config.TEXT_SECONDARY
@@ -343,7 +343,7 @@ class MapVisualizerView(tk.Frame):
         tk.Label(
             item_frame,
             text=icon,
-            font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE),
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
             bg=config.BG_WHITE,
             fg=color
         ).pack(side="left", padx=(0, 5))
@@ -601,7 +601,7 @@ class MapVisualizerView(tk.Frame):
             self._clear_selected_route()
             
             # Show loading message
-            self.route_distance_label.config(text="⏳ Fetching route...")
+            self.route_distance_label.config(text="Fetching route...")
             self.update_idletasks()
             
             # Get realistic route in background
@@ -639,7 +639,7 @@ class MapVisualizerView(tk.Frame):
             
         except Exception as e:
             logging.error(f"Error fetching route: {e}")
-            self.after(0, lambda: self.route_distance_label.config(text="❌ Error fetching route"))
+            self.after(0, lambda: self.route_distance_label.config(text="Error fetching route"))
     
     def _plot_highlighted_route(self, store_a, store_b, route_coords, distance_km):
         """Plot the highlighted route on map (runs on main thread)"""
@@ -675,7 +675,7 @@ class MapVisualizerView(tk.Frame):
             
             # Update distance label
             self.route_distance_label.config(
-                text=f"📏 {distance_km:.2f} km | ⏱️ {distance_km/50:.1f} hrs"
+                text=f"{distance_km:.2f} km | {distance_km/50:.1f} hrs"
             )
             
             # Center map on route
@@ -690,7 +690,7 @@ class MapVisualizerView(tk.Frame):
             
         except Exception as e:
             logging.error(f"Error plotting highlighted route: {e}")
-            self.route_distance_label.config(text="❌ Error plotting route")
+            self.route_distance_label.config(text="Error plotting route")
     
     def _get_route_coordinates(self, lat1, lon1, lat2, lon2):
         """Fetch realistic route coordinates using OSRM"""

@@ -63,7 +63,7 @@ class NewRoutesView(tk.Frame):
         
         title_label = tk.Label(
             header_frame, 
-            text="🗺️ Create New Delivery Route",
+            text="Create New Delivery Route",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_LIGHT, 
             fg=config.TEXT_PRIMARY
@@ -246,7 +246,7 @@ class NewRoutesView(tk.Frame):
         
         tk.Button(
             buttons_frame,
-            text="✨ Optimize",
+            text="Optimize",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg="#17A2B8",
             fg=config.BG_WHITE,
@@ -300,7 +300,7 @@ class NewRoutesView(tk.Frame):
         
         tk.Label(
             summary_header,
-            text="📊 Route Summary",
+            text="Route Summary",
             font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -383,7 +383,7 @@ class NewRoutesView(tk.Frame):
         
         tk.Label(
             stats_frame,
-            text="💡 Quick Stats",
+            text="Quick Stats",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -466,7 +466,7 @@ class NewRoutesView(tk.Frame):
         if selected_idx >= 0 and self.vehicles_data:
             vehicle = self.vehicles_data[selected_idx]
             vehicle_info = (
-                f"🚚 {vehicle['Model']}\n"
+                f"{vehicle['Model']}\n"
                 f"Year: {vehicle['Year']}\n"
                 f"Miles: {vehicle['Miles']}\n"
                 f"Area: {vehicle['Area']}"
@@ -626,70 +626,243 @@ class NewRoutesView(tk.Frame):
             messagebox.showerror("Error", f"Failed to create route:\n{str(e)[:200]}")
     
     def _optimize_route(self):
-        """Suggest best vehicle and time estimates based on historical data"""
+        """
+        Optimize route using two strategies:
+        1. Form-based optimization: Suggest best vehicle/times for current form selections
+        2. Fleet-wide optimization: Optimize all pending deliveries across fleet
+        """
         selected_stores_indices = self.stores_listbox.curselection()
-        if not selected_stores_indices:
-            messagebox.showinfo("Optimization", "Please select delivery stores first to get recommendations.")
-            return
-            
+        
+        # If stores are selected, optimize THIS route
+        if selected_stores_indices:
+            self._optimize_current_route(selected_stores_indices)
+        else:
+            # If no stores selected, offer fleet-wide optimization
+            self._optimize_fleet_routes()
+    
+    def _optimize_current_route(self, selected_stores_indices):
+        """Optimize the current route form based on selected stores"""
         try:
             store_ids = [str(self.stores_data[i]['StoreID']) for i in selected_stores_indices]
-            store_ids_str = ",".join(store_ids)
+            store_ids_str = ",".join(f"'{sid}'" for sid in store_ids)  # Add quotes for string IDs
             
             # 1. Find best vehicle (lowest avg delivery time for these stores)
             best_vehicle_query = f"""
-                SELECT TOP 1 VehicleID, AVG(Delivery_Time) as AvgTime
+                SELECT TOP 1 
+                    VehicleID, 
+                    AVG(Delivery_Time) as AvgTime,
+                    COUNT(*) as DeliveryCount
                 FROM DeliveryLog
                 WHERE StoreID IN ({store_ids_str})
-                AND Status = 'Delivered'
-                AND Delivery_Time > 0
+                  AND Delivery_Time IS NOT NULL
+                  AND Delivery_Time > 0
+                  AND Delivery_Time BETWEEN 20 AND 400
                 GROUP BY VehicleID
-                ORDER BY AvgTime ASC
+                HAVING COUNT(*) >= 3
+                ORDER BY AVG(Delivery_Time) ASC
             """
             best_vehicle = self.repo.fetch_all(best_vehicle_query)
             
             vehicle_found = False
-            if best_vehicle:
+            vehicle_name = ""
+            avg_time = 0
+            
+            if best_vehicle and len(best_vehicle) > 0:
                 best_vehicle_id = best_vehicle[0]['VehicleID']
+                avg_time = best_vehicle[0]['AvgTime']
+                
                 # Find index in combo
                 for i, v in enumerate(self.vehicles_data):
                     if v['VehicleID'] == best_vehicle_id:
                         self.vehicle_combo.current(i)
                         self._on_vehicle_selected(None)
                         vehicle_found = True
+                        vehicle_name = f"{v['Model']} ({v['Year']})"
                         break
             
-            # 2. Estimate delivery time based on historical average
-            avg_time_query = f"""
+            # 2. Estimate pickup time based on prep time patterns
+            # ✅ Fixed: Use CAST to convert TIME to DATETIME for DATEDIFF
+            pickup_query = f"""
+                SELECT 
+                    AVG(
+                        DATEDIFF(
+                            MINUTE, 
+                            CAST(CAST(GETDATE() AS DATE) AS DATETIME) + CAST(Order_Time AS DATETIME),
+                            CAST(CAST(GETDATE() AS DATE) AS DATETIME) + CAST(Pickup_Time AS DATETIME)
+                        )
+                    ) as AvgPrep
+                FROM DeliveryLog
+                WHERE StoreID IN ({store_ids_str})
+                  AND Pickup_Time IS NOT NULL
+                  AND Order_Time IS NOT NULL
+                  AND Pickup_Time > Order_Time
+            """
+            pickup_results = self.repo.fetch_all(pickup_query)
+            
+            pickup_estimate = 30  # Default
+            if pickup_results and len(pickup_results) > 0 and pickup_results[0]['AvgPrep']:
+                pickup_estimate = max(5, min(120, int(pickup_results[0]['AvgPrep'])))  # Clamp between 5-120
+                self.pickup_time_entry.delete(0, tk.END)
+                self.pickup_time_entry.insert(0, str(pickup_estimate))
+            
+            # 3. Estimate delivery time based on historical average
+            delivery_query = f"""
                 SELECT AVG(Delivery_Time) as AvgTime
                 FROM DeliveryLog
                 WHERE StoreID IN ({store_ids_str})
-                AND Status = 'Delivered'
-                AND Delivery_Time > 0
+                  AND Delivery_Time IS NOT NULL
+                  AND Delivery_Time > 0
+                  AND Delivery_Time BETWEEN 20 AND 400
             """
-            avg_time_result = self.repo.fetch_all(avg_time_query)
+            delivery_results = self.repo.fetch_all(delivery_query)
             
-            msg = "Route Optimized!\n\n"
-            if vehicle_found:
-                msg += "• Selected best performing vehicle based on history\n"
-            else:
-                msg += "• No specific vehicle data found for these stores\n"
-
-            if avg_time_result and avg_time_result[0]['AvgTime']:
-                estimated_time = int(avg_time_result[0]['AvgTime'])
-                # Update delivery time entry
+            delivery_estimate = 45  # Default
+            if delivery_results and len(delivery_results) > 0 and delivery_results[0]['AvgTime']:
+                delivery_estimate = int(delivery_results[0]['AvgTime'])
                 self.delivery_time_entry.delete(0, tk.END)
-                self.delivery_time_entry.insert(0, str(estimated_time))
-                msg += f"• Updated delivery time estimate to {estimated_time} min (historical average)"
+                self.delivery_time_entry.insert(0, str(delivery_estimate))
+            
+            # 4. Update summary
+            self._update_summary()
+            
+            # Build optimization message
+            msg = "Route Optimization Complete!\n\n"
+            msg += "Optimizations Applied:\n\n"
+            
+            if vehicle_found:
+                msg += f"Vehicle: {vehicle_name}\n"
+                msg += f"   Best performer for these stores (avg: {int(avg_time)} min)\n\n"
             else:
-                msg += "• No historical time data available for estimates"
-                
+                msg += "Vehicle: No historical data found\n"
+                msg += "   (Need at least 3 deliveries per vehicle)\n\n"
+            
+            msg += f"Pickup Time: {pickup_estimate} minutes\n"
+            msg += f"   Based on historical preparation patterns\n\n"
+            
+            msg += f"Delivery Time: {delivery_estimate} minutes\n"
+            msg += f"   Based on {len(selected_stores_indices)} store(s) average\n\n"
+            
+            total_time = pickup_estimate + delivery_estimate
+            msg += f"Total Estimated Time: {total_time} minutes\n"
+            msg += f"   ({total_time // 60}h {total_time % 60}min)"
+            
             messagebox.showinfo("Optimization Complete", msg)
+            logging.info(f"Route optimized: {len(selected_stores_indices)} stores, est. {total_time} min")
                 
         except Exception as e:
-            logging.error(f"Optimization error: {e}")
-            messagebox.showerror("Error", f"Optimization failed: {e}")
-
+            logging.error(f"Route optimization error: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Error", f"Optimization failed:\n{str(e)[:200]}")
+    
+    def _optimize_fleet_routes(self):
+        """Optimize all pending deliveries across the entire fleet"""
+        try:
+            from backend.route_optimizer import RouteOptimizer
+            
+            # Show loading message
+            loading_msg = messagebox.showinfo(
+                "Fleet Optimization",
+                "Analyzing pending deliveries and available vehicles...\n\nPlease wait..."
+            )
+            self.update()
+            
+            # Create optimizer
+            optimizer = RouteOptimizer(self.repo)
+            
+            # Get current status first
+            summary = optimizer.get_optimization_summary()
+            
+            if summary['pending_deliveries'] == 0:
+                messagebox.showinfo(
+                    "No Pending Deliveries",
+                    "There are no pending deliveries to optimize.\n\n"
+                    "Fleet-wide optimization requires unassigned deliveries in the system.\n\n"
+                    "💡 Tip: Create individual routes using this form, or import pending orders."
+                )
+                return
+            
+            # Show confirmation with details
+            confirm_msg = (
+                f"Fleet-Wide Route Optimization\n\n"
+                f"Found:\n"
+                f"  • {summary['pending_deliveries']} pending deliveries\n"
+                f"  • {summary['unique_stores']} unique stores\n"
+                f"  • {summary['vehicles_available']} available vehicles\n\n"
+                f"Optimization potential: {summary['optimization_potential']}\n\n"
+                f"This will automatically assign pending deliveries to vehicles\n"
+                f"using an intelligent clustering algorithm.\n\n"
+                f"Proceed with fleet optimization?"
+            )
+            
+            if not messagebox.askyesno("Confirm Fleet Optimization", confirm_msg):
+                return
+            
+            # Run optimization
+            logging.info("Starting fleet-wide route optimization...")
+            result = optimizer.optimize_routes(max_deliveries_per_vehicle=10)
+            
+            if result['success']:
+                # Show success message with details
+                success_msg = (
+                    f"Fleet Optimization Complete!\n\n"
+                    f"Results:\n"
+                    f"  • Deliveries Optimized: {result['total_deliveries']}\n"
+                    f"  • Vehicles Assigned: {result['vehicles_used']}\n"
+                    f"  • Est. Time Saved: {result['estimated_time_saved']} minutes\n"
+                    f"    ({result['estimated_time_saved'] // 60}h {result['estimated_time_saved'] % 60}min)\n\n"
+                    f"Optimization Strategy:\n"
+                    f"  • Grouped deliveries by store location\n"
+                    f"  • Balanced load across available vehicles\n"
+                    f"  • Minimized total delivery time\n\n"
+                    f"{result['message']}"
+                )
+                
+                # Show route details
+                if result['optimized_routes']:
+                    success_msg += "\n\nVehicle Assignments:\n"
+                    for idx, route in enumerate(result['optimized_routes'][:5], 1):  # Show first 5
+                        success_msg += f"  {idx}. Vehicle {route['vehicle_id']}: {route['delivery_count']} deliveries\n"
+                    
+                    if len(result['optimized_routes']) > 5:
+                        success_msg += f"  ... and {len(result['optimized_routes']) - 5} more\n"
+                
+                messagebox.showinfo("Fleet Optimization Complete", success_msg)
+                
+                # Offer to view optimized routes
+                if messagebox.askyesno("View Routes", "Would you like to view the optimized routes?"):
+                    # Here you could switch to the routes view or refresh data
+                    # For now, just log it
+                    logging.info("User requested to view optimized routes")
+                    messagebox.showinfo(
+                        "View Routes",
+                        "Navigate to the 'Routes' tab to view all optimized delivery routes.\n\n"
+                        "The Routes view shows all active deliveries with their assigned vehicles."
+                    )
+                
+                logging.info(f"Fleet optimization complete: {result['total_deliveries']} deliveries across {result['vehicles_used']} vehicles")
+            else:
+                messagebox.showerror(
+                    "Optimization Failed",
+                    f"Fleet optimization encountered an error:\n\n{result['message']}"
+                )
+            
+        except ImportError:
+            messagebox.showerror(
+                "Module Not Found",
+                "Route optimizer module not found.\n\n"
+                "Please ensure backend/route_optimizer.py exists.\n\n"
+                "This feature requires the route optimization module to be installed."
+            )
+        except Exception as e:
+            logging.error(f"Fleet optimization error: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror(
+                "Optimization Error",
+                f"An error occurred during fleet optimization:\n\n{str(e)[:200]}"
+            )
+    
     def destroy(self):
         """Clean up resources"""
         if self.repo:

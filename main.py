@@ -61,7 +61,7 @@ class TransportationApp:
         right_frame = tk.Frame(header, bg=config.BG_WHITE)
         right_frame.pack(side="right", padx=config.PADDING_LARGE, pady=config.PADDING_MEDIUM)
         user_name = self.user_info.get('full_name', 'User')
-        user_label = tk.Label(right_frame, text=f"👤 {user_name}", font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL), bg=config.BG_WHITE, fg=config.TEXT_PRIMARY)
+        user_label = tk.Label(right_frame, text=f"{user_name}", font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL), bg=config.BG_WHITE, fg=config.TEXT_PRIMARY)
         user_label.pack(side="left", padx=(0, 15))
         logout_button = tk.Button(right_frame, text="Logout", font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"), bg=config.BUTTON_BG, fg=config.BUTTON_TEXT, activebackground=config.BUTTON_HOVER, activeforeground=config.BUTTON_TEXT, relief="flat", cursor="hand2", padx=config.PADDING_MEDIUM, pady=config.PADDING_SMALL, command=self._logout)
         logout_button.pack(side="left")
@@ -74,7 +74,7 @@ class TransportationApp:
             messagebox.showerror("Error", f"View not found for tab: {tab_name}")
             return
         
-        # ✅ Always pass user_info to all views
+        # Always pass user_info to all views
         self.current_view = view_class(self.content_frame, self.user_info)
         self.current_view.pack(fill="both", expand=True)
     
