@@ -71,7 +71,7 @@ class AnalyticsView(tk.Frame):
         # Title
         title_label = tk.Label(
             header_frame, 
-            text="📊 Analytics & Reports",
+            text="Analytics & Reports",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_LIGHT, 
             fg=config.TEXT_PRIMARY, 
@@ -96,7 +96,7 @@ class AnalyticsView(tk.Frame):
         # Export button
         export_btn = tk.Button(
             controls_frame, 
-            text="📥 Export CSV",
+            text="Export CSV",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg="#2ECC71", 
             fg=config.BG_WHITE,
@@ -112,7 +112,7 @@ class AnalyticsView(tk.Frame):
         # Refresh button
         refresh_btn = tk.Button(
             controls_frame, 
-            text="🔄 Refresh",
+            text="Refresh",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BUTTON_BG, 
             fg=config.BUTTON_TEXT,
@@ -248,7 +248,7 @@ class AnalyticsView(tk.Frame):
     
     def _create_time_analytics(self, parent):
         """Create time-based analytics with visual charts"""
-        header = SectionHeader(parent, "📈 Delivery Trends & Patterns")
+        header = SectionHeader(parent, "Delivery Trends & Patterns")
         header.pack(fill="x", pady=(0, config.PADDING_MEDIUM))
         
         timeline_frame = tk.Frame(parent, bg=config.BG_WHITE, relief="solid", borderwidth=1)
@@ -351,35 +351,70 @@ class AnalyticsView(tk.Frame):
         self.reports_tree.tag_configure('evenrow', background='#F5F5F5')
     
     def _create_ml_placeholder(self, parent):
-        """Placeholder for future ML predictions"""
-        header = SectionHeader(parent, "🤖 AI-Powered Predictions (Coming Soon)")
+        """ML-powered delivery time predictions"""
+        header = SectionHeader(parent, "AI-Powered Delivery Time Predictions")
         header.pack(fill="x", pady=(config.PADDING_LARGE, config.PADDING_MEDIUM))
         
-        placeholder_frame = tk.Frame(parent, bg=config.BG_WHITE, relief="solid", borderwidth=1)
-        placeholder_frame.pack(fill="x", pady=(0, config.PADDING_LARGE))
+        prediction_frame = tk.Frame(parent, bg=config.BG_WHITE, relief="solid", borderwidth=1)
+        prediction_frame.pack(fill="both", expand=True, pady=(0, config.PADDING_LARGE))
         
-        features_text = """
-        📊 Upcoming Machine Learning Features:
-        
-        • Delivery Time Prediction - AI estimates for new orders based on historical patterns
-        • Demand Forecasting - Predict order volume for better resource planning
-        • Route Optimization - ML-suggested most efficient delivery routes
-        • Resource Allocation - Smart vehicle and driver assignment recommendations
-        • Anomaly Detection - Identify unusual delivery patterns and potential issues
-        
-        These features will use regression models trained on your historical delivery data.
-        Stay tuned for Phase 2 implementation!
-        """
-        
-        tk.Label(
-            placeholder_frame,
-            text=features_text,
-            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
+        # Create scrollable text widget for predictions
+        self.prediction_text = tk.Text(
+            prediction_frame,
+            font=("Consolas", config.FONT_SIZE_SMALL),
             bg=config.BG_WHITE,
-            fg=config.TEXT_SECONDARY,
-            justify="left",
-            anchor="w"
-        ).pack(padx=20, pady=20, fill="x")
+            fg=config.TEXT_PRIMARY,
+            height=20,
+            wrap="word",
+            borderwidth=0,
+            padx=15,
+            pady=15,
+            state="disabled"
+        )
+        
+        prediction_scroll = tk.Scrollbar(prediction_frame, orient="vertical", command=self.prediction_text.yview)
+        self.prediction_text.configure(yscrollcommand=prediction_scroll.set)
+        
+        self.prediction_text.grid(row=0, column=0, sticky="nsew")
+        prediction_scroll.grid(row=0, column=1, sticky="ns")
+        
+        prediction_frame.grid_rowconfigure(0, weight=1)
+        prediction_frame.grid_columnconfigure(0, weight=1)
+        
+        # Try to load ML model
+        self._initialize_ml_model()
+    
+    def _initialize_ml_model(self):
+        """Initialize the ML prediction model"""
+        try:
+            from machine_learning.delivery_predictor import DeliveryTimePredictor
+            
+            self.predictor = DeliveryTimePredictor()
+            
+            if not self.predictor.is_trained:
+                self.prediction_text.config(state="normal")
+                self.prediction_text.insert("end", "Model not trained yet.\n\n")
+                self.prediction_text.insert("end", "To train the model, run:\n")
+                self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py\n\n")
+                self.prediction_text.insert("end", "This will analyze your historical delivery data and create\n")
+                self.prediction_text.insert("end", "a regression model to predict future delivery times.")
+                self.prediction_text.config(state="disabled")
+            else:
+                logging.info("ML model loaded successfully")
+                
+        except ImportError as e:
+            logging.warning(f"ML model not available: {e}")
+            self.predictor = None
+            self.prediction_text.config(state="normal")
+            self.prediction_text.insert("end", "Machine learning libraries not installed.\n\n")
+            self.prediction_text.insert("end", "To enable AI predictions, install:\n")
+            self.prediction_text.insert("end", "  pip install scikit-learn pandas numpy joblib\n\n")
+            self.prediction_text.insert("end", "Then train the model with:\n")
+            self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py")
+            self.prediction_text.config(state="disabled")
+        except Exception as e:
+            logging.error(f"Error initializing ML model: {e}")
+            self.predictor = None
     
     def _load_analytics_data(self):
         """Load all analytics data from database"""
@@ -392,6 +427,7 @@ class AnalyticsView(tk.Frame):
             self._load_vehicle_metrics()
             self._load_timeline_data()
             self._load_reports_table_data()
+            self._load_ml_predictions()  # ✅ Add this line
             
             # Update timestamp
             self.last_updated_label.config(text=f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")
@@ -539,7 +575,7 @@ class AnalyticsView(tk.Frame):
             
             # Header
             self.timeline_text.insert(tk.END, "=" * 100 + "\n", "header")
-            self.timeline_text.insert(tk.END, "   📊 DELIVERY TRENDS - LAST 7 DAYS\n", "header")
+            self.timeline_text.insert(tk.END, "   DELIVERY TRENDS - LAST 7 DAYS\n", "header")
             self.timeline_text.insert(tk.END, "=" * 100 + "\n\n", "header")
             
             if daily_data:
@@ -574,7 +610,7 @@ class AnalyticsView(tk.Frame):
                 """)
                 
                 if hourly_data:
-                    self.timeline_text.insert(tk.END, "   ⏰ PEAK DELIVERY HOURS (Last 7 Days)\n", "header")
+                    self.timeline_text.insert(tk.END, "   PEAK DELIVERY HOURS (Last 7 Days)\n", "header")
                     self.timeline_text.insert(tk.END, "=" * 100 + "\n\n", "header")
                     
                     max_hourly = max(row['TotalDeliveries'] for row in hourly_data)
@@ -646,13 +682,13 @@ class AnalyticsView(tk.Frame):
                     if delivery_minutes is not None:
                         total = (pickup_minutes or 0) + delivery_minutes
                         total_time = f"{total} min"
-                        status = "✓ Completed"
+                        status = "Completed"
                     elif pickup_minutes is not None:
                         total_time = "In Transit"
-                        status = "🚚 In Transit"
+                        status = "In Transit"
                     else:
                         total_time = "Pending"
-                        status = "⏳ Pending"
+                        status = "Pending"
                     
                     # Alternate row colors
                     tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
@@ -727,3 +763,181 @@ class AnalyticsView(tk.Frame):
             except Exception as e:
                 logging.error(f"Error closing analytics repository: {e}")
         super().destroy()
+    
+    # Add this method to load ML predictions:
+
+    def _load_ml_predictions(self):
+        """Load and display ML-powered delivery time predictions"""
+        if not self.predictor or not self.predictor.is_trained:
+            return
+        
+        try:
+            # Fetch recent completed deliveries for validation
+            query = """
+                SELECT TOP 15
+                    dl.Order_ID,
+                    CAST(dl.Order_Time AS VARCHAR(8)) AS Order_Time,
+                    dl.Order_Date,
+                    dl.VehicleID,
+                    dl.StoreID,
+                    dl.Delivery_Time AS Actual_Delivery_Time,
+                    CAST(dl.Pickup_Time AS VARCHAR(8)) AS Pickup_Time,
+                    DATEDIFF(MINUTE, '00:00:00', dl.Order_Time) AS Order_Time_Minutes,
+                    DATEDIFF(MINUTE, '00:00:00', dl.Pickup_Time) AS Pickup_Time_Minutes,
+                    DATEPART(HOUR, dl.Order_Time) AS Order_Hour,
+                    DATEPART(WEEKDAY, dl.Order_Date) AS Day_Of_Week
+                FROM DeliveryLog dl
+                WHERE dl.Order_Date >= DATEADD(DAY, -90, GETDATE())
+                  AND dl.Delivery_Time IS NOT NULL
+                  AND dl.Delivery_Time > 0
+                  AND dl.Delivery_Time >= 20
+                  AND dl.Delivery_Time <= 400
+                  AND dl.Pickup_Time IS NOT NULL
+                  AND dl.Order_Time IS NOT NULL
+                ORDER BY dl.Order_Date DESC
+            """
+            
+            rows = self.repo.fetch_all(query)
+            
+            self.prediction_text.config(state="normal")
+            self.prediction_text.delete(1.0, "end")
+            
+            if not rows or len(rows) == 0:
+                self.prediction_text.insert("end", "No recent delivery data available for predictions.\n\n")
+                self.prediction_text.insert("end", "The system requires completed deliveries from the last 90 days\n")
+                self.prediction_text.insert("end", "with valid delivery times (20-400 minutes).")
+                self.prediction_text.config(state="disabled")
+                return
+            
+            # Convert to DataFrame
+            import pandas as pd
+            import numpy as np
+            
+            order_data = pd.DataFrame(rows, columns=[
+                'Order_ID', 'Order_Time', 'Order_Date', 'VehicleID', 
+                'StoreID', 'Actual_Delivery_Time', 'Pickup_Time', 
+                'Order_Time_Minutes', 'Pickup_Time_Minutes', 'Order_Hour', 'Day_Of_Week'
+            ])
+            
+            # Calculate prep time
+            order_data['Prep_Time_Minutes'] = (
+                order_data['Pickup_Time_Minutes'] - order_data['Order_Time_Minutes']
+            )
+            order_data['Prep_Time_Minutes'] = order_data['Prep_Time_Minutes'].apply(
+                lambda x: x if x >= 0 else x + 1440
+            )
+            
+            # Add historical features if available
+            if hasattr(self.predictor, 'store_avg_dict') and self.predictor.store_avg_dict:
+                default_avg = order_data['Actual_Delivery_Time'].mean()
+                order_data['Store_Avg_Time'] = order_data['StoreID'].map(
+                    lambda x: self.predictor.store_avg_dict.get(x, {}).get('avg_time', default_avg)
+                )
+                order_data['Store_Avg_Prep'] = order_data['StoreID'].map(
+                    lambda x: self.predictor.store_avg_dict.get(x, {}).get('avg_prep', 15)
+                )
+            
+            if hasattr(self.predictor, 'vehicle_avg_dict') and self.predictor.vehicle_avg_dict:
+                default_avg = order_data['Actual_Delivery_Time'].mean()
+                order_data['Vehicle_Avg_Time'] = order_data['VehicleID'].map(
+                    lambda x: self.predictor.vehicle_avg_dict.get(x, {}).get('avg_time', default_avg)
+                )
+            
+            # Prepare input
+            prediction_input = order_data.drop(columns=['Actual_Delivery_Time'])
+            
+            # Generate predictions
+            predictions = self.predictor.predict(prediction_input)
+            actual_values = order_data['Actual_Delivery_Time'].values
+            
+            # Calculate metrics
+            from sklearn.metrics import mean_squared_error, r2_score
+            
+            mse = mean_squared_error(actual_values, predictions)
+            r2 = r2_score(actual_values, predictions)
+            
+            # Display results
+            self.prediction_text.insert("end", "DELIVERY TIME PREDICTIONS\n")
+            self.prediction_text.insert("end", "=" * 70 + "\n\n")
+            
+            # Model accuracy
+            self.prediction_text.insert("end", "MODEL ACCURACY:\n")
+            self.prediction_text.insert("end", "─" * 70 + "\n")
+            
+            # R² interpretation
+            if r2 >= 0.7:
+                r2_desc = "Excellent - High accuracy"
+            elif r2 >= 0.4:
+                r2_desc = "Good - Moderate accuracy"
+            elif r2 >= 0.1:
+                r2_desc = "Fair - Low accuracy"
+            else:
+                r2_desc = "Poor - Limited accuracy"
+            
+            r2_icon = ""
+            self.prediction_text.insert("end", f"   {r2_icon}R² Score: {r2:.3f} ({r2_desc})\n")
+            self.prediction_text.insert("end", f"   Mean Squared Error: {mse:.2f} min²\n")
+            
+            avg_error = np.mean(np.abs(predictions - actual_values))
+            self.prediction_text.insert("end", f"\n   Average prediction error: ±{avg_error:.0f} minutes\n")
+            
+            if r2 < 0:
+                self.prediction_text.insert("end", f"   Model needs more predictive features (e.g., delivery distance)\n")
+            
+            self.prediction_text.insert("end", "\n" + "─" * 70 + "\n\n")
+            
+            # Predictions list
+            self.prediction_text.insert("end", "PREDICTED VS ACTUAL DELIVERY TIMES:\n\n")
+            
+            for idx, (_, order) in enumerate(order_data.iterrows(), 1):
+                order_id = str(order['Order_ID'])
+                predicted = round(predictions[idx-1], 0)
+                actual = order['Actual_Delivery_Time']
+                error = predicted - actual
+                
+                # Format times
+                if predicted >= 60:
+                    pred_str = f"{int(predicted//60)}h {int(predicted%60)}min"
+                else:
+                    pred_str = f"{int(predicted)} min"
+                
+                if actual >= 60:
+                    actual_str = f"{int(actual//60)}h {int(actual%60)}min"
+                else:
+                    actual_str = f"{int(actual)} min"
+                
+                # Accuracy indicator
+                abs_error = abs(error)
+                if abs_error <= 15:
+                    accuracy_icon = "Accurate"
+                elif abs_error <= 30:
+                    accuracy_icon = "Good"
+                elif abs_error <= 60:
+                    accuracy_icon = "Fair"
+                else:
+                    accuracy_icon = "Poor"
+                
+                self.prediction_text.insert("end", f"   {idx}. Order #{order_id}\n")
+                self.prediction_text.insert("end", f"      Predicted: {pred_str}  |  Actual: {actual_str}  {accuracy_icon}\n")
+                
+                if abs_error > 15:
+                    self.prediction_text.insert("end", f"      (off by {int(abs_error)} min)\n")
+                
+                self.prediction_text.insert("end", "\n")
+            
+            # Footer
+            self.prediction_text.insert("end", "─" * 70 + "\n")
+            self.prediction_text.insert("end", "MODEL INFO:\n")
+            if self.predictor.use_simple_model:
+                self.prediction_text.insert("end", "   Using time-based regression (hour-of-day averages)\n")
+                self.prediction_text.insert("end", "   Trained on historical delivery patterns\n")
+            else:
+                self.prediction_text.insert("end", "   Using Ridge Regression with multiple features\n")
+                self.prediction_text.insert("end", "   Features: time, vehicle, store, historical performance\n")
+            
+            self.prediction_text.config(state="disabled")
+            
+        except Exception as e:
+            logging.error(f"Error loading predictions: {e}")
+            import traceback
+            traceback.print_exc()

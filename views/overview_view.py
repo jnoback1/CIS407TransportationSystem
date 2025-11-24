@@ -222,7 +222,7 @@ class OverviewView(tk.Frame):
     
         title = tk.Label(
             header,
-            text=f"📬 All Notifications ({len(notifications)})",
+            text=f"All Notifications ({len(notifications)})",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -274,7 +274,7 @@ class OverviewView(tk.Frame):
                     justify="left"
                 ).pack(fill="x", padx=config.PADDING_MEDIUM, pady=(config.PADDING_SMALL, 2))
 
-                time_text = f"📅 {note['Order_Date']} | ⏰ Delivery Time: {note['Delivery_Time']} min"
+                time_text = f"{note['Order_Date']} | Delivery Time: {note['Delivery_Time']} min"
                 tk.Label(
                     card,
                     text=time_text,
@@ -310,7 +310,7 @@ class OverviewView(tk.Frame):
         
         refresh_btn = tk.Button(
             header,
-            text="🔄 Refresh",
+            text="Refresh",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BUTTON_BG,
             fg=config.BUTTON_TEXT,
@@ -326,7 +326,7 @@ class OverviewView(tk.Frame):
         # Close button
         close_btn = tk.Button(
             header,
-            text="✕ Close",
+            text="Close",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg="#E74C3C",
             fg=config.BG_WHITE,

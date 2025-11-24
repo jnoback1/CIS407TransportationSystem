@@ -58,7 +58,7 @@ class ActiveRoutesView(tk.Frame):
         # Title
         title_label = tk.Label(
             header_frame, 
-            text="🚚 Active Delivery Routes",
+            text="Active Delivery Routes",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_LIGHT, 
             fg=config.TEXT_PRIMARY, 
@@ -95,7 +95,7 @@ class ActiveRoutesView(tk.Frame):
         # Refresh button
         refresh_button = tk.Button(
             controls_frame, 
-            text="🔄 Refresh Now",
+            text="Refresh Now",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BUTTON_BG, 
             fg=config.BUTTON_TEXT,
@@ -160,7 +160,7 @@ class ActiveRoutesView(tk.Frame):
         
         tk.Label(
             list_header,
-            text="📋 Active Routes List",
+            text="Active Routes List",
             font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -265,7 +265,7 @@ class ActiveRoutesView(tk.Frame):
         
         tk.Label(
             details_header,
-            text="📍 Route Details",
+            text="Route Details",
             font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
@@ -277,7 +277,7 @@ class ActiveRoutesView(tk.Frame):
         
         self.complete_btn = tk.Button(
             actions_frame,
-            text="✓ Mark Complete",
+            text="Mark Complete",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
             bg="#28A745",
             fg=config.BG_WHITE,
@@ -293,7 +293,7 @@ class ActiveRoutesView(tk.Frame):
         
         self.alert_btn = tk.Button(
             actions_frame,
-            text="⚠ Report Issue",
+            text="Report Issue",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
             bg="#FFC107",
             fg="#000000",
@@ -415,13 +415,13 @@ class ActiveRoutesView(tk.Frame):
             
             # Determine status based on pickup time
             if pickup_min and pickup_min > 60:
-                status = "⚠ Delayed"
+                status = "Delayed"
                 tag = 'delayed'
             elif pickup_min and pickup_min > 90:
-                status = "🔴 Critical"
+                status = "Critical"
                 tag = 'critical'
             else:
-                status = "✓ On Time"
+                status = "On Time"
                 tag = 'on_time'
             
             # Progress (assume 50% for in-transit)
