@@ -6,11 +6,7 @@ import config
 from auth import LoginWindow
 from ui_components import NavigationSidebar, StatusIndicator
 from views import VIEW_CLASSES
-import sys
-import os
-
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
-from db_connector import connect_with_token
+from backend.db_connector import connect_with_token
 
 
 class TransportationApp:
