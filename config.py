@@ -13,7 +13,7 @@ MAIN_WINDOW_HEIGHT = 800
 MAIN_WINDOW_MIN_WIDTH = 1000
 MAIN_WINDOW_MIN_HEIGHT = 600
 
-TABS = ["Overview", "Analytics", "Active Routes", "New Routes", "Map Visualizer"]
+TABS = ["Overview", "Analytics", "Active Routes", "New Routes", "Edit Routes", "Map Visualizer"]
 
 PRIMARY_COLOR = "#2563eb"
 PRIMARY_DARK = "#1e40af"

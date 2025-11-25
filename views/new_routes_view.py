@@ -778,7 +778,7 @@ class NewRoutesView(tk.Frame):
                     "No Pending Deliveries",
                     "There are no pending deliveries to optimize.\n\n"
                     "Fleet-wide optimization requires unassigned deliveries in the system.\n\n"
-                    "💡 Tip: Create individual routes using this form, or import pending orders."
+                    "Tip: Create individual routes using this form, or import pending orders."
                 )
                 return
             

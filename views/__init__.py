@@ -24,6 +24,12 @@ except Exception as e:
     NewRoutesView = None
 
 try:
+    from .edit_routes_view import EditRoutesView
+except Exception as e:
+    logging.warning(f"EditRoutesView not available: {e}")
+    EditRoutesView = None
+
+try:
     from .map_visualizer_view import MapVisualizerView
 except Exception as e:
     logging.warning(f"MapVisualizerView not available: {e}")
@@ -36,6 +42,7 @@ VIEW_CLASSES = {
         "Analytics": AnalyticsView,
         "Active Routes": ActiveRoutesView,
         "New Routes": NewRoutesView,
+        "Edit Routes": EditRoutesView,
         "Map Visualizer": MapVisualizerView
     }.items() if v is not None
 }
@@ -45,6 +52,7 @@ __all__ = [
     'AnalyticsView',
     'ActiveRoutesView',
     'NewRoutesView',
+    'EditRoutesView',
     'MapVisualizerView',
     'VIEW_CLASSES'
 ]
