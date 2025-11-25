@@ -1,5 +1,6 @@
 """
 Map Visualizer View - Interactive route and delivery mapping
+Shows actual delivery routes from Stores (origin) to Drop Locations (destination)
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -35,7 +36,7 @@ except ImportError:
 
 
 class MapVisualizerView(tk.Frame):
-    """Map Visualizer - Interactive route and delivery mapping"""
+    """Map Visualizer - Interactive route and delivery mapping with Store -> Drop Location routes"""
     
     def __init__(self, parent, user_info):
         super().__init__(parent, bg=config.BG_LIGHT)
@@ -47,21 +48,23 @@ class MapVisualizerView(tk.Frame):
         
         # Filter states
         self.show_stores = tk.BooleanVar(value=True)
-        self.show_vehicles = tk.BooleanVar(value=False)
-        self.show_routes = tk.BooleanVar(value=False)  # Default OFF for performance
+        self.show_drop_locations = tk.BooleanVar(value=False)  # Off by default (too many)
         
-        # Route planning variables
+        # Data storage
         self.stores_data = []
-        self.route_marker_a = None
-        self.route_marker_b = None
+        self.completed_routes = []  # Actual delivery routes from DB
+        self.selected_route = None
+        
+        # Route visualization
+        self.route_marker_origin = None
+        self.route_marker_dest = None
         self.selected_route_path = None
         self.loading_label = None
         
         self._create_ui()
         
         if MAP_AVAILABLE:
-            # Load map data in background to prevent UI blocking
-            self.after(100, self._load_map_data_async)
+            self.after(100, self._load_initial_data)
         else:
             self._show_installation_instructions()
     
@@ -73,8 +76,8 @@ class MapVisualizerView(tk.Frame):
         # Header with controls
         self._create_header(content)
         
-        # Route planner panel
-        self._create_route_planner_panel(content)
+        # Completed Routes Panel (replaces old route planner)
+        self._create_completed_routes_panel(content)
         
         # Map container
         map_container = tk.Frame(content, bg=config.BG_WHITE, relief="solid", borderwidth=1)
@@ -96,25 +99,35 @@ class MapVisualizerView(tk.Frame):
         # Title
         title_label = tk.Label(
             header_frame, 
-            text="Route Map Visualizer",
+            text="Delivery Route Map",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_LIGHT, 
             fg=config.TEXT_PRIMARY
         )
         title_label.pack(side="left")
         
+        # Subtitle
+        subtitle = tk.Label(
+            header_frame,
+            text="View completed delivery routes (Store -> Drop Location)",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            bg=config.BG_LIGHT,
+            fg=config.TEXT_SECONDARY
+        )
+        subtitle.pack(side="left", padx=(15, 0))
+        
         # Controls frame
         controls_frame = tk.Frame(header_frame, bg=config.BG_LIGHT)
         controls_frame.pack(side="right")
         
-        # Only keep "Show Stores" checkbox
+        # Show Stores checkbox
         tk.Checkbutton(
             controls_frame, 
             text="Show Stores", 
             variable=self.show_stores,
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL), 
             bg=config.BG_LIGHT,
-            command=self._update_map_filters
+            command=self._update_map_display
         ).pack(side="left", padx=5)
         
         # Refresh button
@@ -129,112 +142,199 @@ class MapVisualizerView(tk.Frame):
             cursor="hand2",
             padx=10,
             pady=3,
-            command=self._load_map_data_async
+            command=self._load_initial_data
         ).pack(side="left", padx=5)
     
-    def _create_route_planner_panel(self, parent):
-        """Create route planner controls panel"""
+    def _create_completed_routes_panel(self, parent):
+        """Create panel for viewing completed delivery routes"""
         panel_frame = tk.Frame(parent, bg=config.BG_WHITE, relief="solid", borderwidth=1)
         panel_frame.pack(fill="x", pady=(0, config.PADDING_MEDIUM))
         
+        # Main panel content
         panel_content = tk.Frame(panel_frame, bg=config.BG_WHITE)
-        panel_content.pack(padx=15, pady=10)
+        panel_content.pack(padx=15, pady=10, fill="x")
         
-        # Title
+        # Row 1: Title and Load button
+        row1 = tk.Frame(panel_content, bg=config.BG_WHITE)
+        row1.pack(fill="x", pady=(0, 8))
+        
         tk.Label(
-            panel_content,
-            text="Route Planner - Select Route to Highlight",
+            row1,
+            text="Completed Delivery Routes",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
-        ).pack(side="left", padx=(0, 20))
+        ).pack(side="left")
         
-        # Store A selection
-        tk.Label(
-            panel_content,
-            text="Origin:",
+        # Stats label
+        self.stats_label = tk.Label(
+            row1,
+            text="",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
             bg=config.BG_WHITE,
             fg=config.TEXT_SECONDARY
-        ).pack(side="left", padx=(0, 5))
-        
-        self.store_a_var = tk.StringVar()
-        self.store_a_combo = ttk.Combobox(
-            panel_content,
-            textvariable=self.store_a_var,
-            state="readonly",
-            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
-            width=15
         )
-        self.store_a_combo.pack(side="left", padx=(0, 15))
+        self.stats_label.pack(side="left", padx=(15, 0))
         
-        # Store B selection
-        tk.Label(
-            panel_content,
-            text="Destination:",
-            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
-            bg=config.BG_WHITE,
-            fg=config.TEXT_SECONDARY
-        ).pack(side="left", padx=(0, 5))
-        
-        self.store_b_var = tk.StringVar()
-        self.store_b_combo = ttk.Combobox(
-            panel_content,
-            textvariable=self.store_b_var,
-            state="readonly",
-            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
-            width=15
-        )
-        self.store_b_combo.pack(side="left", padx=(0, 15))
-        
-        # Show Route button
         tk.Button(
-            panel_content,
-            text="Highlight Route",
+            row1,
+            text="Load Routes from DB",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
-            bg=config.PRIMARY_COLOR,
+            bg=config.BUTTON_BG,
             fg=config.BUTTON_TEXT,
             activebackground=config.BUTTON_HOVER,
             relief="flat",
             cursor="hand2",
-            padx=15,
-            pady=5,
-            command=self._highlight_selected_route
-        ).pack(side="left", padx=5)
+            padx=10,
+            pady=3,
+            command=self._load_completed_routes
+        ).pack(side="right")
         
-        # Clear Route button
+        # Row 2: Filter controls
+        row2 = tk.Frame(panel_content, bg=config.BG_WHITE)
+        row2.pack(fill="x", pady=(0, 8))
+        
+        # Filter by Store
+        tk.Label(
+            row2,
+            text="Filter by Store:",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            bg=config.BG_WHITE,
+            fg=config.TEXT_SECONDARY
+        ).pack(side="left", padx=(0, 5))
+        
+        self.filter_store_var = tk.StringVar(value="All Stores")
+        self.filter_store_combo = ttk.Combobox(
+            row2,
+            textvariable=self.filter_store_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            width=12
+        )
+        self.filter_store_combo['values'] = ["All Stores"]
+        self.filter_store_combo.pack(side="left", padx=(0, 15))
+        self.filter_store_combo.bind("<<ComboboxSelected>>", lambda e: self._filter_routes())
+        
+        # Limit results
+        tk.Label(
+            row2,
+            text="Show:",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            bg=config.BG_WHITE,
+            fg=config.TEXT_SECONDARY
+        ).pack(side="left", padx=(0, 5))
+        
+        self.limit_var = tk.StringVar(value="50")
+        limit_combo = ttk.Combobox(
+            row2,
+            textvariable=self.limit_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            width=6,
+            values=["25", "50", "100", "200"]
+        )
+        limit_combo.pack(side="left", padx=(0, 15))
+        
+        # Apply filter button
         tk.Button(
-            panel_content,
-            text="Clear Highlight",
+            row2,
+            text="Apply Filter",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
             bg=config.BG_LIGHT,
             fg=config.TEXT_PRIMARY,
             activebackground="#E0E0E0",
             relief="flat",
             cursor="hand2",
-            padx=15,
-            pady=5,
-            command=self._clear_selected_route
+            padx=8,
+            pady=2,
+            command=self._load_completed_routes
         ).pack(side="left", padx=5)
         
-        # Distance label
-        self.route_distance_label = tk.Label(
-            panel_content,
+        # Row 3: Route selection
+        row3 = tk.Frame(panel_content, bg=config.BG_WHITE)
+        row3.pack(fill="x")
+        
+        tk.Label(
+            row3,
+            text="Select Route:",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            bg=config.BG_WHITE,
+            fg=config.TEXT_SECONDARY
+        ).pack(side="left", padx=(0, 5))
+        
+        self.route_var = tk.StringVar()
+        self.route_combo = ttk.Combobox(
+            row3,
+            textvariable=self.route_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            width=60
+        )
+        self.route_combo.pack(side="left", padx=(0, 10))
+        self.route_combo.bind("<<ComboboxSelected>>", self._on_route_selected)
+        
+        # Show on Map button
+        tk.Button(
+            row3,
+            text="Show on Map",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
+            bg="#4CAF50",
+            fg="white",
+            activebackground="#388E3C",
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=3,
+            command=self._show_route_on_map
+        ).pack(side="left", padx=5)
+        
+        # Show All Routes for Store
+        tk.Button(
+            row3,
+            text="Show All for Store",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL, "bold"),
+            bg="#2196F3",
+            fg="white",
+            activebackground="#1976D2",
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=3,
+            command=self._show_all_routes_for_store
+        ).pack(side="left", padx=5)
+        
+        # Clear button
+        tk.Button(
+            row3,
+            text="Clear Map",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            bg=config.BG_LIGHT,
+            fg=config.TEXT_PRIMARY,
+            activebackground="#E0E0E0",
+            relief="flat",
+            cursor="hand2",
+            padx=8,
+            pady=3,
+            command=self._clear_route_display
+        ).pack(side="left", padx=5)
+        
+        # Route info label
+        self.route_info_label = tk.Label(
+            row3,
             text="",
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
             bg=config.BG_WHITE,
             fg=config.TEXT_SECONDARY
         )
-        self.route_distance_label.pack(side="left", padx=(20, 0))
+        self.route_info_label.pack(side="left", padx=(15, 0))
     
     def _create_map_widget(self, parent):
         """Create the interactive map widget"""
         try:
-            # Create map widget
             self.map_widget = tkintermapview.TkinterMapView(
                 parent, 
                 width=800, 
-                height=600,
+                height=500,
                 corner_radius=0
             )
             self.map_widget.pack(fill="both", expand=True, padx=10, pady=10)
@@ -243,16 +343,16 @@ class MapVisualizerView(tk.Frame):
             self.map_widget.set_position(20.5937, 78.9629)
             self.map_widget.set_zoom(5)
             
-            # Set tile server (OpenStreetMap)
+            # Set tile server
             self.map_widget.set_tile_server(
                 "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
                 max_zoom=19
             )
             
-            # Create loading indicator
+            # Loading indicator
             self.loading_label = tk.Label(
                 self.map_widget,
-                text="Loading map data...",
+                text="Loading...",
                 font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
                 bg="white",
                 fg=config.PRIMARY_COLOR,
@@ -262,7 +362,7 @@ class MapVisualizerView(tk.Frame):
                 borderwidth=2
             )
             
-            logging.info("Map widget created successfully - centered on India")
+            logging.info("Map widget created successfully")
             
         except Exception as e:
             logging.error(f"Error creating map widget: {e}")
@@ -275,19 +375,11 @@ class MapVisualizerView(tk.Frame):
         
         tk.Label(
             placeholder_frame,
-            text="Map",
-            font=(config.FONT_FAMILY, 72),
-            bg=config.BG_WHITE,
-            fg=config.TEXT_SECONDARY
-        ).pack(pady=(50, 20))
-        
-        tk.Label(
-            placeholder_frame,
             text="Map Visualization",
             font=(config.FONT_FAMILY, config.FONT_SIZE_HEADING, "bold"),
             bg=config.BG_WHITE,
             fg=config.TEXT_PRIMARY
-        ).pack(pady=10)
+        ).pack(pady=(50, 10))
         
         tk.Label(
             placeholder_frame,
@@ -297,7 +389,7 @@ class MapVisualizerView(tk.Frame):
             fg=config.TEXT_SECONDARY
         ).pack(pady=5)
         
-        command_label = tk.Label(
+        tk.Label(
             placeholder_frame,
             text="pip install tkintermapview requests",
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
@@ -307,8 +399,7 @@ class MapVisualizerView(tk.Frame):
             pady=10,
             relief="solid",
             borderwidth=1
-        )
-        command_label.pack(pady=20)
+        ).pack(pady=20)
     
     def _create_legend(self, parent):
         """Create map legend"""
@@ -316,7 +407,7 @@ class MapVisualizerView(tk.Frame):
         legend_frame.pack(fill="x", pady=(config.PADDING_MEDIUM, 0))
         
         legend_content = tk.Frame(legend_frame, bg=config.BG_WHITE)
-        legend_content.pack(padx=20, pady=15)
+        legend_content.pack(padx=20, pady=10)
         
         tk.Label(
             legend_content,
@@ -326,14 +417,17 @@ class MapVisualizerView(tk.Frame):
             fg=config.TEXT_PRIMARY
         ).pack(side="left", padx=(0, 15))
         
-        # Store marker
-        self._create_legend_item(legend_content, "●", "Stores", "#4CAF50")
+        # Store marker (origin)
+        self._create_legend_item(legend_content, "S", "Store (Origin)", "#4CAF50")
         
-        # Selected/highlighted route
-        self._create_legend_item(legend_content, "━", "Highlighted Route", "#E91E63")
+        # Drop Location marker (destination)
+        self._create_legend_item(legend_content, "D", "Drop Location (Dest)", "#F44336")
         
-        # Vehicle marker
-        self._create_legend_item(legend_content, "●", "Vehicles", "#2196F3")
+        # Route path
+        self._create_legend_item(legend_content, "-", "Delivery Route", "#E91E63")
+        
+        # Multiple routes
+        self._create_legend_item(legend_content, "-", "Store Routes", "#2196F3")
     
     def _create_legend_item(self, parent, icon, label, color):
         """Create a legend item"""
@@ -343,7 +437,7 @@ class MapVisualizerView(tk.Frame):
         tk.Label(
             item_frame,
             text=icon,
-            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
             bg=config.BG_WHITE,
             fg=color
         ).pack(side="left", padx=(0, 5))
@@ -356,179 +450,149 @@ class MapVisualizerView(tk.Frame):
             fg=config.TEXT_SECONDARY
         ).pack(side="left")
     
-    def _load_map_data_async(self):
-        """Load map data in background thread to prevent UI freezing"""
+    # ============================================
+    # DATA LOADING METHODS
+    # ============================================
+    
+    def _load_initial_data(self):
+        """Load initial data in background"""
         if not MAP_AVAILABLE or not self.map_widget:
             return
         
-        # Show loading indicator
         if self.loading_label:
             self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
         
-        # Run data loading in background thread
-        thread = threading.Thread(target=self._load_map_data, daemon=True)
+        thread = threading.Thread(target=self._load_stores_and_stats, daemon=True)
         thread.start()
     
-    def _load_map_data(self):
-        """Load store and route locations from database"""
+    def _load_stores_and_stats(self):
+        """Load stores and basic stats from database"""
         try:
-            self.repo = AzureSqlRepository()
+            if not self.repo:
+                self.repo = AzureSqlRepository()
             
-            # Load stores - this is fast
-            stores = self._load_stores()
-            
-            # Schedule UI update on main thread
-            self.after(0, lambda: self._update_map_ui(stores))
-            
-        except Exception as e:
-            logging.error(f"Error loading map data: {e}")
-            self.after(0, lambda: messagebox.showerror("Error", f"Failed to load map data:\n{str(e)[:150]}"))
-            self.after(0, self._hide_loading)
-    
-    def _update_map_ui(self, stores):
-        """Update map UI with loaded data (runs on main thread)"""
-        try:
-            # Clear existing markers and paths
-            self._clear_map(keep_selected=True)
-            
-            # Store data for route planner
-            self.stores_data = stores
-            
-            # Populate store dropdowns
-            self._populate_store_dropdowns()
-            
-            # Plot stores (fast)
-            if self.show_stores.get() and stores:
-                self._plot_stores(stores)
-            
-            # Only load routes if checkbox is enabled (performance optimization)
-            if self.show_routes.get():
-                # Load and plot routes in background
-                threading.Thread(target=self._load_and_plot_routes, daemon=True).start()
-            
-            # Only load vehicles if checkbox is enabled
-            if self.show_vehicles.get():
-                active_vehicles = self._load_active_vehicles()
-                if active_vehicles:
-                    self._plot_vehicles(active_vehicles)
-            
-            logging.info(f"Map loaded: {len(stores)} stores")
-            
-        finally:
-            self._hide_loading()
-    
-    def _hide_loading(self):
-        """Hide loading indicator"""
-        if self.loading_label:
-            self.loading_label.place_forget()
-    
-    def _load_stores(self):
-        """Load store locations from database - OPTIMIZED"""
-        stores = self.repo.fetch_all("""
-            SELECT 
-                StoreID,
-                lat AS Latitude,
-                lon AS Longitude
-            FROM Stores
-            WHERE lat BETWEEN 8 AND 37
-              AND lon BETWEEN 68 AND 97
-              AND lat <> 0 
-              AND lon <> 0
-            ORDER BY StoreID
-        """)
-        
-        logging.info(f"Loaded {len(stores) if stores else 0} valid stores")
-        return stores if stores else []
-    
-    def _load_and_plot_routes(self):
-        """Load sample routes from database - OPTIMIZED for performance"""
-        try:
-            # OPTIMIZED: Only load a sample of routes (e.g., 50 most recent)
-            # This prevents the massive CROSS APPLY query
-            routes = self.repo.fetch_all("""
-                SELECT TOP 50
-                    dl.Order_ID,
-                    dl.VehicleID,
-                    s1.lat AS Origin_Lat,
-                    s1.lon AS Origin_Lon,
-                    s2.lat AS Dest_Lat,
-                    s2.lon AS Dest_Lon
-                FROM DeliveryLog dl
-                OUTER APPLY (
-                    SELECT TOP 1 lat, lon 
-                    FROM Stores 
-                    WHERE lat BETWEEN 8 AND 37 AND lon BETWEEN 68 AND 97
-                    ORDER BY NEWID()
-                ) s1
-                OUTER APPLY (
-                    SELECT TOP 1 lat, lon 
-                    FROM Stores 
-                    WHERE lat BETWEEN 8 AND 37 AND lon BETWEEN 68 AND 97
-                    ORDER BY NEWID()
-                ) s2
-                WHERE dl.Pickup_Time IS NOT NULL
-                ORDER BY dl.Order_Date DESC
+            # Load stores
+            stores = self.repo.fetch_all("""
+                SELECT StoreID, lat AS Latitude, lon AS Longitude
+                FROM Stores
+                WHERE lat BETWEEN 8 AND 37 AND lon BETWEEN 68 AND 97
+                ORDER BY StoreID
             """)
             
-            if routes:
-                # Plot on main thread
-                self.after(0, lambda: self._plot_sample_routes(routes))
+            self.stores_data = stores if stores else []
+            
+            # Get stats
+            stats = self.repo.fetch_all("""
+                SELECT 
+                    COUNT(DISTINCT StoreID) AS TotalStores,
+                    COUNT(DISTINCT DropLocationID) AS TotalDrops,
+                    COUNT(*) AS TotalDeliveries
+                FROM DeliveryLog
+                WHERE Delivery_Time IS NOT NULL AND Delivery_Time > 0
+            """)
+            
+            # Update UI on main thread
+            self.after(0, lambda: self._update_initial_ui(stores, stats))
             
         except Exception as e:
-            logging.error(f"Error loading routes: {e}")
+            logging.error(f"Error loading initial data: {e}")
+            self.after(0, lambda: messagebox.showerror("Error", f"Failed to load data:\n{str(e)[:150]}"))
+        finally:
+            self.after(0, self._hide_loading)
     
-    def _plot_sample_routes(self, routes):
-        """Plot sample routes on map (light blue, straight lines for performance)"""
-        if not routes:
-            return
+    def _update_initial_ui(self, stores, stats):
+        """Update UI with initial data"""
+        # Populate store filter dropdown
+        store_options = ["All Stores"] + [f"Store {s['StoreID']}" for s in stores]
+        self.filter_store_combo['values'] = store_options
         
-        for route in routes:
-            try:
-                if all([route.get('Origin_Lat'), route.get('Origin_Lon'),
-                        route.get('Dest_Lat'), route.get('Dest_Lon')]):
-                    
-                    # Use straight lines for performance (no OSRM calls)
-                    path = self.map_widget.set_path(
-                        [
-                            (float(route['Origin_Lat']), float(route['Origin_Lon'])),
-                            (float(route['Dest_Lat']), float(route['Dest_Lon']))
-                        ],
-                        color="#90CAF9",  # Light blue
-                        width=2
-                    )
-                    self.paths.append(path)
-            except Exception as e:
-                logging.warning(f"Could not plot route: {e}")
+        # Update stats label
+        if stats and len(stats) > 0:
+            s = stats[0]
+            self.stats_label.config(
+                text=f"{s['TotalStores']} stores | {s['TotalDrops']} drop locations | {s['TotalDeliveries']} completed deliveries"
+            )
         
-        logging.info(f"Plotted {len(self.paths)} sample routes")
+        # Plot stores if enabled
+        if self.show_stores.get() and stores:
+            self._plot_stores(stores)
+        
+        logging.info(f"Loaded {len(stores)} stores")
     
-    def _load_active_vehicles(self):
-        """Load active vehicles from database"""
-        vehicles = self.repo.fetch_all("""
-            SELECT TOP 20
-                dl.VehicleID,
-                v.Model AS Vehicle_Model,
-                -- Using random coordinates for demonstration
-                CAST(20 + (RAND(CHECKSUM(NEWID())) * 15) AS DECIMAL(10,6)) AS Latitude,
-                CAST(72 + (RAND(CHECKSUM(NEWID())) * 20) AS DECIMAL(10,6)) AS Longitude
-            FROM DeliveryLog dl
-            LEFT JOIN Vehicles v ON dl.VehicleID = v.VehicleID
-            WHERE dl.Pickup_Time IS NOT NULL 
-              AND dl.Delivery_Time IS NULL
-        """)
-        
-        return vehicles if vehicles else []
+    def _load_completed_routes(self):
+        """Load completed delivery routes from database"""
+        try:
+            if not self.repo:
+                self.repo = AzureSqlRepository()
+            
+            # Get filter values
+            store_filter = self.filter_store_var.get()
+            limit = int(self.limit_var.get())
+            
+            # Build query with proper joins to get Store and DropLocation coordinates
+            store_condition = ""
+            if store_filter != "All Stores":
+                store_id = int(store_filter.replace("Store ", ""))
+                store_condition = f"AND dl.StoreID = {store_id}"
+            
+            routes = self.repo.fetch_all(f"""
+                SELECT TOP {limit}
+                    dl.Order_ID,
+                    dl.StoreID,
+                    dl.DropLocationID,
+                    dl.VehicleID,
+                    dl.Delivery_Time,
+                    dl.Order_Date,
+                    CAST(dl.Order_Time AS VARCHAR(8)) AS Order_Time,
+                    s.lat AS Store_Lat,
+                    s.lon AS Store_Lon,
+                    d.lat AS Drop_Lat,
+                    d.lon AS Drop_Lon
+                FROM DeliveryLog dl
+                INNER JOIN Stores s ON dl.StoreID = s.StoreID
+                INNER JOIN DropLocations d ON dl.DropLocationID = d.DropLocationID
+                WHERE dl.Delivery_Time IS NOT NULL
+                  AND dl.Delivery_Time > 0
+                  AND dl.Delivery_Time BETWEEN 20 AND 400
+                  AND s.lat BETWEEN 8 AND 37 AND s.lon BETWEEN 68 AND 97
+                  AND d.lat BETWEEN 8 AND 37 AND d.lon BETWEEN 68 AND 97
+                  {store_condition}
+                ORDER BY dl.Order_Date DESC, dl.Order_Time DESC
+            """)
+            
+            if not routes:
+                messagebox.showinfo("No Data", "No completed routes found with the current filter.")
+                return
+            
+            self.completed_routes = routes
+            
+            # Populate route dropdown
+            route_options = []
+            for r in routes:
+                date_str = str(r['Order_Date'])[:10] if r['Order_Date'] else 'N/A'
+                display = f"Order {r['Order_ID']} | Store {r['StoreID']} -> Drop {r['DropLocationID']} | {r['Delivery_Time']}min | {date_str}"
+                route_options.append(display)
+            
+            self.route_combo['values'] = route_options
+            self.route_info_label.config(text=f"Loaded {len(routes)} routes")
+            
+            logging.info(f"Loaded {len(routes)} completed routes")
+            
+        except Exception as e:
+            logging.error(f"Error loading completed routes: {e}")
+            messagebox.showerror("Error", f"Failed to load routes:\n{str(e)[:150]}")
     
-    def _populate_store_dropdowns(self):
-        """Populate store selection dropdowns"""
-        if self.stores_data:
-            store_options = [f"Store {s['StoreID']}" for s in self.stores_data]
-            self.store_a_combo['values'] = store_options
-            self.store_b_combo['values'] = store_options
+    def _filter_routes(self):
+        """Filter routes based on selection"""
+        self._load_completed_routes()
+    
+    # ============================================
+    # MAP DISPLAY METHODS
+    # ============================================
     
     def _plot_stores(self, stores):
         """Plot store locations on map"""
-        if not stores:
+        if not stores or not self.map_widget:
             return
         
         for store in stores:
@@ -541,7 +605,7 @@ class MapVisualizerView(tk.Frame):
                         marker_color_circle="#4CAF50",
                         marker_color_outside="#1B5E20",
                         text_color="#000000",
-                        font=("Arial", 10, "bold")
+                        font=("Arial", 9, "bold")
                     )
                     self.markers.append(marker)
                 except Exception as e:
@@ -549,148 +613,259 @@ class MapVisualizerView(tk.Frame):
         
         logging.info(f"Plotted {len(self.markers)} store markers")
     
-    def _plot_vehicles(self, vehicles):
-        """Plot active vehicles on map"""
-        for vehicle in vehicles:
-            if vehicle.get('Latitude') and vehicle.get('Longitude'):
-                try:
-                    marker = self.map_widget.set_marker(
-                        float(vehicle['Latitude']),
-                        float(vehicle['Longitude']),
-                        text=f"V{vehicle['VehicleID']}",
-                        marker_color_circle="#2196F3",
-                        marker_color_outside="#0D47A1",
-                        text_color="#000000",
-                        font=("Arial", 10, "bold")
-                    )
-                    self.markers.append(marker)
-                except Exception as e:
-                    logging.warning(f"Could not plot vehicle {vehicle['VehicleID']}: {e}")
-    
-    def _highlight_selected_route(self):
-        """Highlight the selected route with realistic routing"""
-        if not MAP_AVAILABLE or not self.map_widget:
-            messagebox.showwarning("Map Unavailable", "Map widget is not available")
-            return
-        
-        store_a_text = self.store_a_var.get()
-        store_b_text = self.store_b_var.get()
-        
-        if not store_a_text or not store_b_text:
-            messagebox.showwarning("Selection Required", "Please select both origin and destination stores")
-            return
-        
-        if store_a_text == store_b_text:
-            messagebox.showwarning("Invalid Selection", "Origin and destination must be different")
+    def _on_route_selected(self, event):
+        """Handle route selection from dropdown"""
+        selection = self.route_var.get()
+        if not selection:
             return
         
         try:
-            # Extract Store IDs
-            store_a_id = int(store_a_text.split()[1])
-            store_b_id = int(store_b_text.split()[1])
+            # Parse order ID from selection
+            order_id = selection.split("|")[0].replace("Order", "").strip()
+            self.selected_route = next(
+                (r for r in self.completed_routes if str(r['Order_ID']).strip() == order_id),
+                None
+            )
             
-            # Find store data
-            store_a = next((s for s in self.stores_data if s['StoreID'] == store_a_id), None)
-            store_b = next((s for s in self.stores_data if s['StoreID'] == store_b_id), None)
+            if self.selected_route:
+                r = self.selected_route
+                distance = self._haversine_distance(
+                    r['Store_Lat'], r['Store_Lon'],
+                    r['Drop_Lat'], r['Drop_Lon']
+                )
+                self.route_info_label.config(
+                    text=f"Store {r['StoreID']} -> Drop {r['DropLocationID']} | ~{distance:.1f}km | {r['Delivery_Time']}min"
+                )
+        except Exception as e:
+            logging.warning(f"Error parsing route selection: {e}")
+    
+    def _show_route_on_map(self):
+        """Display selected route on map"""
+        if not self.selected_route:
+            messagebox.showwarning("No Selection", "Please select a route first")
+            return
+        
+        if not MAP_AVAILABLE or not self.map_widget:
+            return
+        
+        try:
+            r = self.selected_route
             
-            if not store_a or not store_b:
-                messagebox.showerror("Error", "Could not find store coordinates")
-                return
+            # Clear previous route display
+            self._clear_route_display()
             
-            # Clear previous highlighted route
-            self._clear_selected_route()
+            # Plot Store (Origin) marker - Green
+            self.route_marker_origin = self.map_widget.set_marker(
+                float(r['Store_Lat']),
+                float(r['Store_Lon']),
+                text=f"S{r['StoreID']}",
+                marker_color_circle="#4CAF50",
+                marker_color_outside="#1B5E20",
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
+            )
             
-            # Show loading message
-            self.route_distance_label.config(text="Fetching route...")
-            self.update_idletasks()
+            # Plot Drop Location (Destination) marker - Red
+            self.route_marker_dest = self.map_widget.set_marker(
+                float(r['Drop_Lat']),
+                float(r['Drop_Lon']),
+                text=f"D{r['DropLocationID']}",
+                marker_color_circle="#F44336",
+                marker_color_outside="#B71C1C",
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
+            )
             
-            # Get realistic route in background
+            # Draw route path - fetch realistic route in background
+            self.route_info_label.config(text="Fetching route...")
+            
             threading.Thread(
-                target=self._fetch_and_plot_route,
-                args=(store_a, store_b),
+                target=self._fetch_and_draw_route,
+                args=(r,),
                 daemon=True
             ).start()
             
         except Exception as e:
-            logging.error(f"Error highlighting route: {e}")
-            messagebox.showerror("Error", f"Failed to highlight route:\n{str(e)}")
+            logging.error(f"Error showing route on map: {e}")
+            messagebox.showerror("Error", f"Failed to display route:\n{str(e)}")
     
-    def _fetch_and_plot_route(self, store_a, store_b):
-        """Fetch realistic route and plot it (runs in background)"""
+    def _fetch_and_draw_route(self, route):
+        """Fetch realistic route and draw it"""
         try:
-            # Get realistic route coordinates
             route_coords = self._get_route_coordinates(
-                store_a['Latitude'], store_a['Longitude'],
-                store_b['Latitude'], store_b['Longitude']
+                route['Store_Lat'], route['Store_Lon'],
+                route['Drop_Lat'], route['Drop_Lon']
             )
             
             if not route_coords or len(route_coords) < 2:
-                logging.warning("Could not fetch realistic route, using straight line")
                 route_coords = [
-                    (float(store_a['Latitude']), float(store_a['Longitude'])),
-                    (float(store_b['Latitude']), float(store_b['Longitude']))
+                    (float(route['Store_Lat']), float(route['Store_Lon'])),
+                    (float(route['Drop_Lat']), float(route['Drop_Lon']))
                 ]
             
-            # Calculate distance
-            distance_km = self._calculate_route_distance(route_coords)
+            distance = self._calculate_route_distance(route_coords)
             
-            # Plot on main thread
-            self.after(0, lambda: self._plot_highlighted_route(store_a, store_b, route_coords, distance_km))
+            # Draw on main thread
+            self.after(0, lambda: self._draw_route_path(route, route_coords, distance))
             
         except Exception as e:
             logging.error(f"Error fetching route: {e}")
-            self.after(0, lambda: self.route_distance_label.config(text="Error fetching route"))
+            self.after(0, lambda: self.route_info_label.config(text="Error fetching route"))
     
-    def _plot_highlighted_route(self, store_a, store_b, route_coords, distance_km):
-        """Plot the highlighted route on map (runs on main thread)"""
+    def _draw_route_path(self, route, route_coords, distance):
+        """Draw the route path on map"""
         try:
-            # Plot origin marker (Pink)
-            self.route_marker_a = self.map_widget.set_marker(
-                float(store_a['Latitude']),
-                float(store_a['Longitude']),
-                text="A",
-                marker_color_circle="#E91E63",
-                marker_color_outside="#880E4F",
-                text_color="#FFFFFF",
-                font=("Arial", 14, "bold")
-            )
-            
-            # Plot destination marker (Pink)
-            self.route_marker_b = self.map_widget.set_marker(
-                float(store_b['Latitude']),
-                float(store_b['Longitude']),
-                text="B",
-                marker_color_circle="#E91E63",
-                marker_color_outside="#880E4F",
-                text_color="#FFFFFF",
-                font=("Arial", 14, "bold")
-            )
-            
-            # Draw highlighted route path (Pink, thick)
+            # Draw path
             self.selected_route_path = self.map_widget.set_path(
                 route_coords,
                 color="#E91E63",
-                width=5
+                width=4
             )
             
-            # Update distance label
-            self.route_distance_label.config(
-                text=f"{distance_km:.2f} km | {distance_km/50:.1f} hrs"
+            # Update info label
+            self.route_info_label.config(
+                text=f"Store {route['StoreID']} -> Drop {route['DropLocationID']} | {distance:.1f}km | {route['Delivery_Time']}min"
             )
             
             # Center map on route
-            center_lat = (float(store_a['Latitude']) + float(store_b['Latitude'])) / 2
-            center_lon = (float(store_a['Longitude']) + float(store_b['Longitude'])) / 2
+            center_lat = (float(route['Store_Lat']) + float(route['Drop_Lat'])) / 2
+            center_lon = (float(route['Store_Lon']) + float(route['Drop_Lon'])) / 2
             self.map_widget.set_position(center_lat, center_lon)
             
             # Auto-zoom
-            self._fit_route_to_view(distance_km)
+            self._fit_route_to_view(distance)
             
-            logging.info(f"Route highlighted: Store {store_a['StoreID']} → Store {store_b['StoreID']} ({distance_km:.2f} km)")
+            logging.info(f"Displayed route: Store {route['StoreID']} -> Drop {route['DropLocationID']}")
             
         except Exception as e:
-            logging.error(f"Error plotting highlighted route: {e}")
-            self.route_distance_label.config(text="Error plotting route")
+            logging.error(f"Error drawing route path: {e}")
+    
+    def _show_all_routes_for_store(self):
+        """Show all routes originating from the selected store"""
+        store_filter = self.filter_store_var.get()
+        
+        if store_filter == "All Stores":
+            messagebox.showwarning("Select Store", "Please select a specific store from the filter first")
+            return
+        
+        if not self.completed_routes:
+            messagebox.showwarning("No Data", "Please load routes first")
+            return
+        
+        if not MAP_AVAILABLE or not self.map_widget:
+            return
+        
+        try:
+            store_id = int(store_filter.replace("Store ", ""))
+            
+            # Filter routes for this store
+            store_routes = [r for r in self.completed_routes if r['StoreID'] == store_id]
+            
+            if not store_routes:
+                messagebox.showinfo("No Routes", f"No routes found for Store {store_id}")
+                return
+            
+            # Clear previous display
+            self._clear_route_display()
+            
+            # Get store coordinates
+            store = store_routes[0]
+            store_lat = float(store['Store_Lat'])
+            store_lon = float(store['Store_Lon'])
+            
+            # Plot store marker
+            self.route_marker_origin = self.map_widget.set_marker(
+                store_lat, store_lon,
+                text=f"S{store_id}",
+                marker_color_circle="#4CAF50",
+                marker_color_outside="#1B5E20",
+                text_color="#FFFFFF",
+                font=("Arial", 14, "bold")
+            )
+            
+            # Plot routes to all drop locations (limit to 50 for performance)
+            plotted = 0
+            for r in store_routes[:50]:
+                try:
+                    # Draw straight line for performance (many routes)
+                    path = self.map_widget.set_path(
+                        [
+                            (store_lat, store_lon),
+                            (float(r['Drop_Lat']), float(r['Drop_Lon']))
+                        ],
+                        color="#2196F3",
+                        width=2
+                    )
+                    self.paths.append(path)
+                    plotted += 1
+                except Exception as e:
+                    logging.warning(f"Could not plot route: {e}")
+            
+            # Center on store
+            self.map_widget.set_position(store_lat, store_lon)
+            self.map_widget.set_zoom(9)
+            
+            self.route_info_label.config(
+                text=f"Showing {plotted} routes from Store {store_id}"
+            )
+            
+            logging.info(f"Displayed {plotted} routes for Store {store_id}")
+            
+        except Exception as e:
+            logging.error(f"Error showing all routes for store: {e}")
+            messagebox.showerror("Error", f"Failed to display routes:\n{str(e)}")
+    
+    def _clear_route_display(self):
+        """Clear route markers and paths"""
+        try:
+            if self.route_marker_origin:
+                self.route_marker_origin.delete()
+                self.route_marker_origin = None
+            
+            if self.route_marker_dest:
+                self.route_marker_dest.delete()
+                self.route_marker_dest = None
+            
+            if self.selected_route_path:
+                self.selected_route_path.delete()
+                self.selected_route_path = None
+            
+            for path in self.paths:
+                path.delete()
+            self.paths.clear()
+            
+            self.route_info_label.config(text="")
+            
+        except Exception as e:
+            logging.warning(f"Error clearing route display: {e}")
+    
+    def _update_map_display(self):
+        """Update map display based on checkboxes"""
+        self._clear_map()
+        
+        if self.show_stores.get() and self.stores_data:
+            self._plot_stores(self.stores_data)
+    
+    def _clear_map(self):
+        """Clear all markers from map"""
+        try:
+            for marker in self.markers:
+                marker.delete()
+            self.markers.clear()
+            
+            self._clear_route_display()
+            
+        except Exception as e:
+            logging.warning(f"Error clearing map: {e}")
+    
+    def _hide_loading(self):
+        """Hide loading indicator"""
+        if self.loading_label:
+            self.loading_label.place_forget()
+    
+    # ============================================
+    # ROUTING UTILITIES
+    # ============================================
     
     def _get_route_coordinates(self, lat1, lon1, lat2, lon2):
         """Fetch realistic route coordinates using OSRM"""
@@ -699,22 +874,15 @@ class MapVisualizerView(tk.Frame):
         
         try:
             url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}"
-            params = {
-                "overview": "full",
-                "geometries": "geojson"
-            }
+            params = {"overview": "full", "geometries": "geojson"}
             
             response = requests.get(url, params=params, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
-                
                 if data.get('code') == 'Ok' and data.get('routes'):
                     coordinates = data['routes'][0]['geometry']['coordinates']
-                    route_coords = [(coord[1], coord[0]) for coord in coordinates]
-                    
-                    logging.info(f"Fetched realistic route with {len(route_coords)} waypoints")
-                    return route_coords
+                    return [(coord[1], coord[0]) for coord in coordinates]
             
             return None
             
@@ -736,7 +904,7 @@ class MapVisualizerView(tk.Frame):
         return total_distance
     
     def _haversine_distance(self, lat1, lon1, lat2, lon2):
-        """Calculate distance between two coordinates"""
+        """Calculate distance between two coordinates in km"""
         R = 6371.0
         
         lat1_rad = math.radians(float(lat1))
@@ -755,57 +923,22 @@ class MapVisualizerView(tk.Frame):
     def _fit_route_to_view(self, distance_km):
         """Auto-zoom map to fit the route"""
         try:
-            if distance_km < 50:
+            if distance_km < 20:
+                zoom = 11
+            elif distance_km < 50:
                 zoom = 10
+            elif distance_km < 100:
+                zoom = 9
             elif distance_km < 200:
                 zoom = 8
             elif distance_km < 500:
                 zoom = 7
-            elif distance_km < 1000:
-                zoom = 6
             else:
-                zoom = 5
+                zoom = 6
             
             self.map_widget.set_zoom(zoom)
         except Exception as e:
             logging.warning(f"Could not auto-zoom: {e}")
-    
-    def _clear_selected_route(self):
-        """Clear the highlighted route"""
-        if self.route_marker_a:
-            self.route_marker_a.delete()
-            self.route_marker_a = None
-        
-        if self.route_marker_b:
-            self.route_marker_b.delete()
-            self.route_marker_b = None
-        
-        if self.selected_route_path:
-            self.selected_route_path.delete()
-            self.selected_route_path = None
-        
-        self.route_distance_label.config(text="")
-    
-    def _clear_map(self, keep_selected=False):
-        """Clear all markers and paths from map"""
-        try:
-            for marker in self.markers:
-                marker.delete()
-            self.markers.clear()
-            
-            for path in self.paths:
-                path.delete()
-            self.paths.clear()
-            
-            if not keep_selected:
-                self._clear_selected_route()
-            
-        except Exception as e:
-            logging.warning(f"Error clearing map: {e}")
-    
-    def _update_map_filters(self):
-        """Update map based on filter checkboxes"""
-        self._load_map_data_async()
     
     def _show_installation_instructions(self):
         """Show installation instructions"""
