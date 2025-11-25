@@ -93,6 +93,22 @@ class AnalyticsView(tk.Frame):
         controls_frame = tk.Frame(header_frame, bg=config.BG_LIGHT)
         controls_frame.pack(side="right")
         
+        # Retrain ML Model button
+        retrain_btn = tk.Button(
+            controls_frame, 
+            text="Retrain AI Model",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
+            bg="#9B59B6",
+            fg=config.BG_WHITE,
+            activebackground="#8E44AD",
+            relief="flat", 
+            cursor="hand2",
+            padx=15, 
+            pady=5,
+            command=self._retrain_ml_model
+        )
+        retrain_btn.pack(side="right", padx=5)
+        
         # Export button
         export_btn = tk.Button(
             controls_frame, 
@@ -352,8 +368,26 @@ class AnalyticsView(tk.Frame):
     
     def _create_ml_placeholder(self, parent):
         """ML-powered delivery time predictions"""
-        header = SectionHeader(parent, "AI-Powered Delivery Time Predictions")
-        header.pack(fill="x", pady=(config.PADDING_LARGE, config.PADDING_MEDIUM))
+        header_frame = tk.Frame(parent, bg=config.BG_LIGHT)
+        header_frame.pack(fill="x", pady=(config.PADDING_LARGE, config.PADDING_MEDIUM))
+        
+        SectionHeader(header_frame, "Forecasted Delivery Times").pack(side="left")
+        
+        # Add Load Predictions button
+        load_predictions_btn = tk.Button(
+            header_frame,
+            text="Load Predictions",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL, "bold"),
+            bg=config.PRIMARY_COLOR,
+            fg=config.BG_WHITE,
+            activebackground="#2980B9",  # Darker shade of PRIMARY_COLOR
+            relief="flat",
+            cursor="hand2",
+            padx=15,
+            pady=5,
+            command=self._load_ml_predictions
+        )
+        load_predictions_btn.pack(side="right")
         
         prediction_frame = tk.Frame(parent, bg=config.BG_WHITE, relief="solid", borderwidth=1)
         prediction_frame.pack(fill="both", expand=True, pady=(0, config.PADDING_LARGE))
@@ -381,8 +415,42 @@ class AnalyticsView(tk.Frame):
         prediction_frame.grid_rowconfigure(0, weight=1)
         prediction_frame.grid_columnconfigure(0, weight=1)
         
-        # Try to load ML model
+        # Try to load ML model but don't run predictions yet
         self._initialize_ml_model()
+        
+        # Show placeholder message
+        self._show_prediction_placeholder()
+    
+    def _show_prediction_placeholder(self):
+        """Show placeholder message before predictions are loaded"""
+        self.prediction_text.config(state="normal")
+        self.prediction_text.delete(1.0, "end")
+        
+        if not self.predictor:
+            self.prediction_text.insert("end", "Machine learning libraries not installed.\n\n")
+            self.prediction_text.insert("end", "To enable AI predictions, install:\n")
+            self.prediction_text.insert("end", "  pip install scikit-learn pandas numpy joblib\n\n")
+            self.prediction_text.insert("end", "Then train the model with:\n")
+            self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py")
+        elif not self.predictor.is_trained:
+            self.prediction_text.insert("end", "Model not trained yet.\n\n")
+            self.prediction_text.insert("end", "To train the model, click 'Retrain AI Model' button above\n")
+            self.prediction_text.insert("end", "or run from command line:\n")
+            self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py\n\n")
+            self.prediction_text.insert("end", "This will analyze your historical delivery data and create\n")
+            self.prediction_text.insert("end", "a regression model to predict future delivery times.")
+        else:
+            self.prediction_text.insert("end", "AI model loaded and ready.\n\n")
+            self.prediction_text.insert("end", "Click 'Load Predictions' button above to view\n")
+            self.prediction_text.insert("end", "recent delivery time predictions and model accuracy.\n\n")
+            
+            if hasattr(self.predictor, 'training_date') and self.predictor.training_date:
+                train_date = self.predictor.training_date.strftime('%Y-%m-%d %H:%M')
+                self.prediction_text.insert("end", f"Last Trained: {train_date}\n")
+            if hasattr(self.predictor, 'training_samples'):
+                self.prediction_text.insert("end", f"Training Samples: {self.predictor.training_samples}\n")
+        
+        self.prediction_text.config(state="disabled")
     
     def _initialize_ml_model(self):
         """Initialize the ML prediction model"""
@@ -392,26 +460,13 @@ class AnalyticsView(tk.Frame):
             self.predictor = DeliveryTimePredictor()
             
             if not self.predictor.is_trained:
-                self.prediction_text.config(state="normal")
-                self.prediction_text.insert("end", "Model not trained yet.\n\n")
-                self.prediction_text.insert("end", "To train the model, run:\n")
-                self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py\n\n")
-                self.prediction_text.insert("end", "This will analyze your historical delivery data and create\n")
-                self.prediction_text.insert("end", "a regression model to predict future delivery times.")
-                self.prediction_text.config(state="disabled")
+                logging.info("ML model not trained yet")
             else:
                 logging.info("ML model loaded successfully")
                 
         except ImportError as e:
             logging.warning(f"ML model not available: {e}")
             self.predictor = None
-            self.prediction_text.config(state="normal")
-            self.prediction_text.insert("end", "Machine learning libraries not installed.\n\n")
-            self.prediction_text.insert("end", "To enable AI predictions, install:\n")
-            self.prediction_text.insert("end", "  pip install scikit-learn pandas numpy joblib\n\n")
-            self.prediction_text.insert("end", "Then train the model with:\n")
-            self.prediction_text.insert("end", "  python machine_learning/delivery_predictor.py")
-            self.prediction_text.config(state="disabled")
         except Exception as e:
             logging.error(f"Error initializing ML model: {e}")
             self.predictor = None
@@ -422,12 +477,12 @@ class AnalyticsView(tk.Frame):
             if not self.repo:
                 self.repo = AzureSqlRepository()
             
-            # Load all sections
+            # Load all sections EXCEPT predictions (load on demand)
             self._load_performance_metrics()
             self._load_vehicle_metrics()
             self._load_timeline_data()
             self._load_reports_table_data()
-            self._load_ml_predictions()  # ✅ Add this line
+            # self._load_ml_predictions()  # ❌ Remove this line
             
             # Update timestamp
             self.last_updated_label.config(text=f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")
@@ -764,8 +819,92 @@ class AnalyticsView(tk.Frame):
                 logging.error(f"Error closing analytics repository: {e}")
         super().destroy()
     
-    # Add this method to load ML predictions:
-
+    def _retrain_ml_model(self):
+        """Retrain the ML model with latest data"""
+        try:
+            from machine_learning.delivery_predictor import train_model_from_database
+            
+            # Confirm action
+            result = messagebox.askyesno(
+                "Retrain Model",
+                "This will retrain the AI model with latest delivery data.\n\n"
+            )
+            
+            if not result:
+                return
+            
+            # Show progress
+            progress_window = tk.Toplevel(self)
+            progress_window.title("Training Model")
+            progress_window.geometry("400x150")
+            progress_window.transient(self)
+            progress_window.grab_set()
+            
+            # Center window
+            progress_window.update_idletasks()
+            x = (progress_window.winfo_screenwidth() // 2) - (400 // 2)
+            y = (progress_window.winfo_screenheight() // 2) - (150 // 2)
+            progress_window.geometry(f"+{x}+{y}")
+            
+            tk.Label(
+                progress_window,
+                text="Training AI Model...",
+                font=(config.FONT_FAMILY, config.FONT_SIZE_LARGE, "bold"),
+                pady=20
+            ).pack()
+            
+            progress_label = tk.Label(
+                progress_window,
+                text="Fetching training data from database...",
+                font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
+                fg=config.TEXT_SECONDARY
+            )
+            progress_label.pack(pady=10)
+            
+            progress_window.update()
+            
+            # Run training in background
+            def train():
+                try:
+                    predictor, metrics = train_model_from_database()
+                    progress_window.destroy()
+                    
+                    if predictor and metrics:
+                        self.predictor = predictor
+                        
+                        messagebox.showinfo(
+                            "Success",
+                            f"Model trained successfully!\n\n"
+                            f"Model Type: {metrics['model_type']}\n"
+                            f"Test R²: {metrics['test_r2']:.3f}\n"
+                            f"Test MAE: {metrics['test_mae']:.2f} minutes\n"
+                            f"Training Samples: {metrics['samples']}\n\n"
+                            "Click 'Load Predictions' to view results."
+                        )
+                        
+                        # Show updated placeholder instead of auto-loading
+                        self._show_prediction_placeholder()
+                    else:
+                        messagebox.showerror(
+                            "Training Failed",
+                            "Could not train model. Check console for details."
+                        )
+                except Exception as e:
+                    progress_window.destroy()
+                    messagebox.showerror("Error", f"Training failed: {str(e)}")
+            
+            # Start training after short delay
+            self.after(100, train)
+            
+        except ImportError:
+            messagebox.showerror(
+                "Import Error",
+                "Could not import training module.\n\n"
+                "Ensure machine_learning/delivery_predictor.py exists."
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to retrain model: {str(e)}")
+    
     def _load_ml_predictions(self):
         """Load and display ML-powered delivery time predictions"""
         if not self.predictor or not self.predictor.is_trained:
@@ -843,99 +982,74 @@ class AnalyticsView(tk.Frame):
                     lambda x: self.predictor.vehicle_avg_dict.get(x, {}).get('avg_time', default_avg)
                 )
             
-            # Prepare input
+            # Prepare input and generate predictions
             prediction_input = order_data.drop(columns=['Actual_Delivery_Time'])
             
-            # Generate predictions
-            predictions = self.predictor.predict(prediction_input)
+            if hasattr(self.predictor, 'predict_with_confidence'):
+                pred_results = self.predictor.predict_with_confidence(prediction_input)
+                predictions = pred_results['predictions']
+            else:
+                predictions = self.predictor.predict(prediction_input)
+            
             actual_values = order_data['Actual_Delivery_Time'].values
             
             # Calculate metrics
-            from sklearn.metrics import mean_squared_error, r2_score
+            from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
             
-            mse = mean_squared_error(actual_values, predictions)
+            mae = mean_absolute_error(actual_values, predictions)
             r2 = r2_score(actual_values, predictions)
             
-            # Display results
-            self.prediction_text.insert("end", "DELIVERY TIME PREDICTIONS\n")
+            # Display simplified results
+            self.prediction_text.config(state="normal")
+            self.prediction_text.delete(1.0, "end")
+            
+            # Header
+            self.prediction_text.insert("end", "Forecasted Delivery Times\n")
             self.prediction_text.insert("end", "=" * 70 + "\n\n")
             
-            # Model accuracy
-            self.prediction_text.insert("end", "MODEL ACCURACY:\n")
-            self.prediction_text.insert("end", "─" * 70 + "\n")
+            # Compact model info
+            if hasattr(self.predictor, 'training_date') and self.predictor.training_date:
+                train_date = self.predictor.training_date.strftime('%Y-%m-%d %H:%M')
+                self.prediction_text.insert("end", f"Last Trained: {train_date}  |  ")
             
-            # R² interpretation
-            if r2 >= 0.7:
-                r2_desc = "Excellent - High accuracy"
-            elif r2 >= 0.4:
-                r2_desc = "Good - Moderate accuracy"
-            elif r2 >= 0.1:
-                r2_desc = "Fair - Low accuracy"
+            if hasattr(self.predictor, 'training_samples'):
+                self.prediction_text.insert("end", f"Samples: {self.predictor.training_samples}  |  ")
+            
+            if self.predictor.use_simple_model:
+                self.prediction_text.insert("end", "Model: Time-Based\n")
             else:
-                r2_desc = "Poor - Limited accuracy"
+                model_type = type(self.predictor.model).__name__
+                self.prediction_text.insert("end", f"Model: {model_type}\n")
             
-            r2_icon = ""
-            self.prediction_text.insert("end", f"   {r2_icon}R² Score: {r2:.3f} ({r2_desc})\n")
-            self.prediction_text.insert("end", f"   Mean Squared Error: {mse:.2f} min²\n")
+            # Compact accuracy metrics
+            self.prediction_text.insert("end", f"\nR-Squared: {r2:.3f}  |  MAE: {mae:.1f} min  |  ")
+            accuracy_pct = max(0, 100 * (1 - mae / np.mean(actual_values)))
+            self.prediction_text.insert("end", f"Accuracy: {accuracy_pct:.1f}%\n")
+            self.prediction_text.insert("end", "=" * 70 + "\n\n")
             
-            avg_error = np.mean(np.abs(predictions - actual_values))
-            self.prediction_text.insert("end", f"\n   Average prediction error: ±{avg_error:.0f} minutes\n")
-            
-            if r2 < 0:
-                self.prediction_text.insert("end", f"   Model needs more predictive features (e.g., delivery distance)\n")
-            
-            self.prediction_text.insert("end", "\n" + "─" * 70 + "\n\n")
-            
-            # Predictions list
-            self.prediction_text.insert("end", "PREDICTED VS ACTUAL DELIVERY TIMES:\n\n")
+            # Simplified predictions table
+            self.prediction_text.insert("end", "Order ID          Predicted    Actual    Error\n")
+            self.prediction_text.insert("end", "-" * 70 + "\n")
             
             for idx, (_, order) in enumerate(order_data.iterrows(), 1):
-                order_id = str(order['Order_ID'])
+                order_id = str(order['Order_ID'])[:16].ljust(16)
                 predicted = round(predictions[idx-1], 0)
                 actual = order['Actual_Delivery_Time']
-                error = predicted - actual
+                error = abs(predicted - actual)
                 
                 # Format times
-                if predicted >= 60:
-                    pred_str = f"{int(predicted//60)}h {int(predicted%60)}min"
-                else:
-                    pred_str = f"{int(predicted)} min"
+                def format_time(minutes):
+                    hours = int(minutes // 60)
+                    mins = int(minutes % 60)
+                    if hours > 0:
+                        return f"{hours}h {mins:02d}m"
+                    return f"{int(minutes)}m"
                 
-                if actual >= 60:
-                    actual_str = f"{int(actual//60)}h {int(actual%60)}min"
-                else:
-                    actual_str = f"{int(actual)} min"
+                pred_str = format_time(predicted).ljust(10)
+                actual_str = format_time(actual).ljust(8)
+                error_str = f"{int(error)}m"
                 
-                # Accuracy indicator
-                abs_error = abs(error)
-                if abs_error <= 15:
-                    accuracy_icon = "Accurate"
-                elif abs_error <= 30:
-                    accuracy_icon = "Good"
-                elif abs_error <= 60:
-                    accuracy_icon = "Fair"
-                else:
-                    accuracy_icon = "Poor"
-                
-                self.prediction_text.insert("end", f"   {idx}. Order #{order_id}\n")
-                self.prediction_text.insert("end", f"      Predicted: {pred_str}  |  Actual: {actual_str}  {accuracy_icon}\n")
-                
-                if abs_error > 15:
-                    self.prediction_text.insert("end", f"      (off by {int(abs_error)} min)\n")
-                
-                self.prediction_text.insert("end", "\n")
-            
-            # Footer
-            self.prediction_text.insert("end", "─" * 70 + "\n")
-            self.prediction_text.insert("end", "MODEL INFO:\n")
-            if self.predictor.use_simple_model:
-                self.prediction_text.insert("end", "   Using time-based regression (hour-of-day averages)\n")
-                self.prediction_text.insert("end", "   Trained on historical delivery patterns\n")
-            else:
-                self.prediction_text.insert("end", "   Using Ridge Regression with multiple features\n")
-                self.prediction_text.insert("end", "   Features: time, vehicle, store, historical performance\n")
-            
-            self.prediction_text.config(state="disabled")
+                self.prediction_text.insert("end", f"{order_id}  {pred_str}  {actual_str}  {error_str}\n")
             
         except Exception as e:
             logging.error(f"Error loading predictions: {e}")

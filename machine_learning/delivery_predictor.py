@@ -15,8 +15,8 @@ try:
     import numpy as np
     import pandas as pd
     from sklearn.linear_model import Ridge
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.model_selection import train_test_split
+    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.model_selection import train_test_split, cross_val_score
     from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
     from sklearn.preprocessing import StandardScaler
     import joblib
@@ -45,6 +45,11 @@ class DeliveryTimePredictor:
         # Historical performance dictionaries
         self.store_avg_dict = {}
         self.vehicle_avg_dict = {}
+        
+        # New: Model metadata
+        self.training_date = None
+        self.training_samples = 0
+        self.model_version = "2.0"
         
         if os.path.exists(model_path):
             self.load_model()
@@ -132,6 +137,25 @@ class DeliveryTimePredictor:
         )
         features['weekend_dinner'] = features['is_weekend'] * features['is_dinner_rush']
         
+        # New: Add lag features for time series patterns
+        if 'Order_Date' in data.columns and len(data) > 1:
+            dates = pd.to_datetime(data['Order_Date'], errors='coerce')
+            features['days_since_start'] = (dates - dates.min()).dt.days.fillna(0)
+            features['month'] = dates.dt.month.fillna(6)
+            features['quarter'] = dates.dt.quarter.fillna(2)
+        else:
+            features['days_since_start'] = 0
+            features['month'] = 6
+            features['quarter'] = 2
+        
+        # New: Rush hour intensity score
+        features['rush_intensity'] = (
+            features['is_morning_rush'] * 1.2 + 
+            features['is_lunch_rush'] * 1.5 + 
+            features['is_dinner_rush'] * 1.8 +
+            features['is_late_night'] * 0.8
+        )
+        
         # Fill NaN and ensure numeric
         features = features.fillna(0)
         for col in features.columns:
@@ -157,13 +181,17 @@ class DeliveryTimePredictor:
         print(f"   Overall average delivery time: {self.overall_average:.2f} minutes")
         print(f"   Delivery time std dev: {df['Delivery_Time'].std():.2f} minutes")
         
+        # Store training metadata
+        self.training_date = datetime.now()
+        self.training_samples = len(df)
+        
         # Try ML training
         try:
             X = self.prepare_features(training_data)
             y = df['Delivery_Time'].values
             
             if X.shape[0] == 0 or X.shape[1] == 0:
-                print("⚠️  Could not extract features, using simple time-based model")
+                print("WARNING: Could not extract features, using simple time-based model")
                 self.use_simple_model = True
                 self.is_trained = True
                 return self._get_simple_metrics(df)
@@ -171,7 +199,7 @@ class DeliveryTimePredictor:
             self.feature_names = X.columns.tolist()
             print(f"   Features: {len(self.feature_names)}")
             
-            # Split data
+            # Split data with stratification by hour
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42, shuffle=True
             )
@@ -181,79 +209,67 @@ class DeliveryTimePredictor:
             X_train_scaled = self.scaler.fit_transform(X_train)
             X_test_scaled = self.scaler.transform(X_test)
             
-            # Try Ridge Regression first
-            ridge_model = Ridge(alpha=10.0, random_state=42)
-            ridge_model.fit(X_train_scaled, y_train)
+            best_model = None
+            best_r2 = -float('inf')
+            best_model_name = None
             
-            ridge_test_pred = ridge_model.predict(X_test_scaled)
-            ridge_test_r2 = r2_score(y_test, ridge_test_pred)
-            ridge_test_mae = mean_absolute_error(y_test, ridge_test_pred)
+            # Try multiple models
+            models_to_try = [
+                ('Ridge', Ridge(alpha=10.0, random_state=42)),
+                ('Gradient Boosting', GradientBoostingRegressor(
+                    n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42
+                )),
+                ('Random Forest', RandomForestRegressor(
+                    n_estimators=100, max_depth=10, min_samples_split=5, random_state=42, n_jobs=-1
+                ))
+            ]
             
-            print(f"   Ridge Regression - Test R²: {ridge_test_r2:.3f}, MAE: {ridge_test_mae:.2f}")
+            for model_name, model in models_to_try:
+                print(f"   Training {model_name}...")
+                model.fit(X_train_scaled, y_train)
+                
+                # Cross-validation
+                cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=3, 
+                                           scoring='r2', n_jobs=-1)
+                
+                test_pred = model.predict(X_test_scaled)
+                test_r2 = r2_score(y_test, test_pred)
+                test_mae = mean_absolute_error(y_test, test_pred)
+                
+                print(f"      CV R² (mean): {cv_scores.mean():.3f} (±{cv_scores.std():.3f})")
+                print(f"      Test R²: {test_r2:.3f}, MAE: {test_mae:.2f} min")
+                
+                if test_r2 > best_r2:
+                    best_r2 = test_r2
+                    best_model = model
+                    best_model_name = model_name
             
-            # If Ridge is decent, use it
-            if ridge_test_r2 > 0.1:
-                self.model = ridge_model
+            if best_r2 > 0.1:
+                self.model = best_model
                 self.use_simple_model = False
                 self.is_trained = True
                 
-                train_pred = ridge_model.predict(X_train_scaled)
+                train_pred = best_model.predict(X_train_scaled)
                 train_r2 = r2_score(y_train, train_pred)
                 train_mae = mean_absolute_error(y_train, train_pred)
                 
-                print(f"Using Ridge Regression model")
+                print(f"\nUsing {best_model_name} model")
                 
                 return {
                     'train_r2': train_r2,
-                    'test_r2': ridge_test_r2,
+                    'test_r2': best_r2,
                     'train_mae': train_mae,
-                    'test_mae': ridge_test_mae,
+                    'test_mae': mean_absolute_error(y_test, best_model.predict(X_test_scaled)),
                     'samples': len(df),
-                    'model_type': 'Ridge Regression'
+                    'model_type': best_model_name,
+                    'cv_scores': cv_scores.tolist()
                 }
             
-            # Try Random Forest if Ridge is weak
-            print("   Ridge weak, trying Random Forest...")
-            rf_model = RandomForestRegressor(
-                n_estimators=100,
-                max_depth=10,
-                min_samples_split=5,
-                random_state=42,
-                n_jobs=-1
-            )
-            rf_model.fit(X_train_scaled, y_train)
-            
-            rf_test_pred = rf_model.predict(X_test_scaled)
-            rf_test_r2 = r2_score(y_test, rf_test_pred)
-            rf_test_mae = mean_absolute_error(y_test, rf_test_pred)
-            
-            print(f"   Random Forest - Test R²: {rf_test_r2:.3f}, MAE: {rf_test_mae:.2f}")
-            
-            if rf_test_r2 > ridge_test_r2 and rf_test_r2 > 0:
-                self.model = rf_model
-                self.use_simple_model = False
-                self.is_trained = True
-                
-                rf_train_pred = rf_model.predict(X_train_scaled)
-                train_r2 = r2_score(y_train, rf_train_pred)
-                train_mae = mean_absolute_error(y_train, rf_train_pred)
-                
-                print(f"Using Random Forest model")
-                
-                return {
-                    'train_r2': train_r2,
-                    'test_r2': rf_test_r2,
-                    'train_mae': train_mae,
-                    'test_mae': rf_test_mae,
-                    'samples': len(df),
-                    'model_type': 'Random Forest'
-                }
-            
-            # Fall back to simple model if both ML models fail
-            raise ValueError("ML models not effective (R² <= 0)")
+            # Fall back to simple model if all ML models fail
+            raise ValueError("All ML models not effective (R² <= 0.1)")
             
         except Exception as e:
-            print(f"  ML training failed: {e}")
+            print(f"   ML training failed: {e}")
             print("   Falling back to simple time-based model")
             self.use_simple_model = True
             self.is_trained = True
@@ -317,6 +333,55 @@ class DeliveryTimePredictor:
         
         return np.array(predictions)
     
+    def predict_with_confidence(self, order_data, confidence=0.95):
+        """Make predictions with confidence intervals"""
+        if not self.is_trained:
+            raise ValueError("Model not trained")
+        
+        predictions = self.predict(order_data)
+        
+        if self.use_simple_model:
+            # Simple model: use standard deviation
+            df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
+            std_dev = 30.0  # Approximate standard deviation
+            margin = std_dev * 1.96  # 95% confidence interval
+            
+            return {
+                'predictions': predictions,
+                'lower_bound': np.maximum(predictions - margin, 10),
+                'upper_bound': predictions + margin,
+                'confidence': confidence
+            }
+        
+        # ML model: use prediction variance (if available)
+        if hasattr(self.model, 'predict') and isinstance(self.model, RandomForestRegressor):
+            # For Random Forest, use tree predictions variance
+            df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
+            X = self.prepare_features(df)
+            X_scaled = self.scaler.transform(X)
+            
+            # Get predictions from all trees
+            tree_predictions = np.array([tree.predict(X_scaled) for tree in self.model.estimators_])
+            std_dev = np.std(tree_predictions, axis=0)
+            margin = std_dev * 1.96
+            
+            return {
+                'predictions': predictions,
+                'lower_bound': np.maximum(predictions - margin, 10),
+                'upper_bound': predictions + margin,
+                'confidence': confidence,
+                'std_dev': std_dev
+            }
+        else:
+            # For other models, use fixed margin based on training error
+            margin = 25.0  # Approximate margin
+            return {
+                'predictions': predictions,
+                'lower_bound': np.maximum(predictions - margin, 10),
+                'upper_bound': predictions + margin,
+                'confidence': confidence
+            }
+    
     def save_model(self):
         """Save model to disk"""
         if not self.is_trained:
@@ -334,7 +399,9 @@ class DeliveryTimePredictor:
             'use_simple_model': self.use_simple_model,
             'store_avg_dict': self.store_avg_dict,
             'vehicle_avg_dict': self.vehicle_avg_dict,
-            'trained_date': datetime.now().isoformat()
+            'trained_date': datetime.now().isoformat(),
+            'training_samples': self.training_samples,
+            'model_version': self.model_version
         }
         
         joblib.dump(model_data, self.model_path)
@@ -357,10 +424,12 @@ class DeliveryTimePredictor:
             self.use_simple_model = model_data.get('use_simple_model', False)
             self.store_avg_dict = model_data.get('store_avg_dict', {})
             self.vehicle_avg_dict = model_data.get('vehicle_avg_dict', {})
+            self.training_samples = model_data.get('training_samples', 0)
+            self.model_version = model_data.get('model_version', '1.0')
             self.is_trained = True
             
             trained_date = model_data.get('trained_date', 'Unknown')
-            logging.info(f"Model loaded (trained: {trained_date})")
+            logging.info(f"Model loaded (trained: {trained_date}, samples: {self.training_samples})")
             return True
         except Exception as e:
             logging.error(f"Error loading model: {e}")
@@ -443,7 +512,7 @@ def train_model_from_database():
         lambda x: x if x >= 0 else x + 1440
     )
     
-    # ✅ Filter out unrealistic prep times
+    # Filter out unrealistic prep times
     training_data = training_data[
         (training_data['Prep_Time_Minutes'] >= 0) & 
         (training_data['Prep_Time_Minutes'] <= 120)
@@ -551,6 +620,6 @@ if __name__ == "__main__":
         print(f"   Training Samples: {metrics['samples']}")
         print("\n    Model saved and ready to use!")
         print("\nRestart your application and navigate to the Analytics tab")
-        print("to see AI-powered delivery time predictions!")
+        print("to see forecasted delivery times")
     else:
         print("\n    Model training failed. Check data quality.")

@@ -18,6 +18,7 @@ TABS = ["Overview", "Analytics", "Active Routes", "New Routes", "Edit Routes", "
 PRIMARY_COLOR = "#2563eb"
 PRIMARY_DARK = "#1e40af"
 PRIMARY_LIGHT = "#3b82f6"
+ACCENT_COLOR = "#2980B9"  # Darker shade for active states
 BG_DARK = "#1e293b"
 BG_MEDIUM = "#334155"
 BG_LIGHT = "#f1f5f9"
