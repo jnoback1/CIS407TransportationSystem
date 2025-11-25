@@ -875,10 +875,8 @@ class AnalyticsView(tk.Frame):
                         messagebox.showinfo(
                             "Success",
                             f"Model trained successfully!\n\n"
-                            f"Model Type: {metrics['model_type']}\n"
-                            f"Test R²: {metrics['test_r2']:.3f}\n"
-                            f"Test MAE: {metrics['test_mae']:.2f} minutes\n"
-                            f"Training Samples: {metrics['samples']}\n\n"
+                            f"R² Score: {metrics['test_r2']:.3f}\n"
+                            f"MAE: {metrics['test_mae']:.2f} minutes\n\n"
                             "Click 'Load Predictions' to view results."
                         )
                         
@@ -1015,11 +1013,9 @@ class AnalyticsView(tk.Frame):
             if hasattr(self.predictor, 'training_samples'):
                 self.prediction_text.insert("end", f"Samples: {self.predictor.training_samples}  |  ")
             
-            if self.predictor.use_simple_model:
-                self.prediction_text.insert("end", "Model: Time-Based\n")
-            else:
-                model_type = type(self.predictor.model).__name__
-                self.prediction_text.insert("end", f"Model: {model_type}\n")
+            # Always show LinearRegression
+            model_type = type(self.predictor.model).__name__
+            self.prediction_text.insert("end", f"Model: {model_type}\n")
             
             # Compact accuracy metrics
             self.prediction_text.insert("end", f"\nR-Squared: {r2:.3f}  |  MAE: {mae:.1f} min  |  ")
@@ -1051,7 +1047,16 @@ class AnalyticsView(tk.Frame):
                 
                 self.prediction_text.insert("end", f"{order_id}  {pred_str}  {actual_str}  {error_str}\n")
             
+            # Lock the text widget after inserting all content
+            self.prediction_text.config(state="disabled")
+            
         except Exception as e:
             logging.error(f"Error loading predictions: {e}")
             import traceback
             traceback.print_exc()
+            
+            # Show error message in the text widget
+            self.prediction_text.config(state="normal")
+            self.prediction_text.delete(1.0, "end")
+            self.prediction_text.insert("end", f"Error loading predictions:\n{str(e)}")
+            self.prediction_text.config(state="disabled")

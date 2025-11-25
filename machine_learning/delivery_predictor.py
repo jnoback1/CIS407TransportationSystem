@@ -1,6 +1,6 @@
 """
 Delivery Time Prediction Model
-Uses Ridge Regression to forecast delivery times based on historical data
+Uses Linear Regression to forecast delivery times based on historical data
 Filters out invalid records (Delivery_Time = 0 or unrealistic values)
 """
 import logging
@@ -14,10 +14,9 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 try:
     import numpy as np
     import pandas as pd
-    from sklearn.linear_model import Ridge
-    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-    from sklearn.model_selection import train_test_split, cross_val_score
-    from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+    from sklearn.linear_model import LinearRegression
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import mean_absolute_error, r2_score
     from sklearn.preprocessing import StandardScaler
     import joblib
     ML_AVAILABLE = True
@@ -27,7 +26,7 @@ except ImportError as e:
 
 
 class DeliveryTimePredictor:
-    """Predicts delivery times using regression models"""
+    """Predicts delivery times using Linear Regression"""
     
     def __init__(self, model_path='machine_learning/delivery_model.pkl'):
         self.model_path = model_path
@@ -36,17 +35,11 @@ class DeliveryTimePredictor:
         self.feature_names = None
         self.is_trained = False
         
-        # Simple time-based fallback
-        self.hour_averages = {}
-        self.day_averages = {}
-        self.overall_average = 147.0
-        self.use_simple_model = False
-        
         # Historical performance dictionaries
         self.store_avg_dict = {}
         self.vehicle_avg_dict = {}
         
-        # New: Model metadata
+        # Model metadata
         self.training_date = None
         self.training_samples = 0
         self.model_version = "2.0"
@@ -168,132 +161,46 @@ class DeliveryTimePredictor:
         if not ML_AVAILABLE:
             raise ImportError("ML libraries not installed. Run: pip install scikit-learn pandas numpy joblib")
         
-        print(f"Training model with {len(training_data)} samples...")
-        
-        # Calculate simple averages as fallback
         df = pd.DataFrame(training_data)
-        df['hour'] = df['Order_Time'].apply(
-            lambda x: int(str(x).split(':')[0]) if pd.notna(x) else 12
-        )
-        self.hour_averages = df.groupby('hour')['Delivery_Time'].mean().to_dict()
-        self.overall_average = df['Delivery_Time'].mean()
-        
-        print(f"   Overall average delivery time: {self.overall_average:.2f} minutes")
-        print(f"   Delivery time std dev: {df['Delivery_Time'].std():.2f} minutes")
         
         # Store training metadata
         self.training_date = datetime.now()
         self.training_samples = len(df)
         
-        # Try ML training
-        try:
-            X = self.prepare_features(training_data)
-            y = df['Delivery_Time'].values
-            
-            if X.shape[0] == 0 or X.shape[1] == 0:
-                print("WARNING: Could not extract features, using simple time-based model")
-                self.use_simple_model = True
-                self.is_trained = True
-                return self._get_simple_metrics(df)
-            
-            self.feature_names = X.columns.tolist()
-            print(f"   Features: {len(self.feature_names)}")
-            
-            # Split data with stratification by hour
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42, shuffle=True
-            )
-            
-            # Scale features
-            self.scaler = StandardScaler()
-            X_train_scaled = self.scaler.fit_transform(X_train)
-            X_test_scaled = self.scaler.transform(X_test)
-            
-            best_model = None
-            best_r2 = -float('inf')
-            best_model_name = None
-            
-            # Try multiple models
-            models_to_try = [
-                ('Ridge', Ridge(alpha=10.0, random_state=42)),
-                ('Gradient Boosting', GradientBoostingRegressor(
-                    n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42
-                )),
-                ('Random Forest', RandomForestRegressor(
-                    n_estimators=100, max_depth=10, min_samples_split=5, random_state=42, n_jobs=-1
-                ))
-            ]
-            
-            for model_name, model in models_to_try:
-                print(f"   Training {model_name}...")
-                model.fit(X_train_scaled, y_train)
-                
-                # Cross-validation
-                cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=3, 
-                                           scoring='r2', n_jobs=-1)
-                
-                test_pred = model.predict(X_test_scaled)
-                test_r2 = r2_score(y_test, test_pred)
-                test_mae = mean_absolute_error(y_test, test_pred)
-                
-                print(f"      CV R² (mean): {cv_scores.mean():.3f} (±{cv_scores.std():.3f})")
-                print(f"      Test R²: {test_r2:.3f}, MAE: {test_mae:.2f} min")
-                
-                if test_r2 > best_r2:
-                    best_r2 = test_r2
-                    best_model = model
-                    best_model_name = model_name
-            
-            if best_r2 > 0.1:
-                self.model = best_model
-                self.use_simple_model = False
-                self.is_trained = True
-                
-                train_pred = best_model.predict(X_train_scaled)
-                train_r2 = r2_score(y_train, train_pred)
-                train_mae = mean_absolute_error(y_train, train_pred)
-                
-                print(f"\nUsing {best_model_name} model")
-                
-                return {
-                    'train_r2': train_r2,
-                    'test_r2': best_r2,
-                    'train_mae': train_mae,
-                    'test_mae': mean_absolute_error(y_test, best_model.predict(X_test_scaled)),
-                    'samples': len(df),
-                    'model_type': best_model_name,
-                    'cv_scores': cv_scores.tolist()
-                }
-            
-            # Fall back to simple model if all ML models fail
-            raise ValueError("All ML models not effective (R² <= 0.1)")
-            
-        except Exception as e:
-            print(f"   ML training failed: {e}")
-            print("   Falling back to simple time-based model")
-            self.use_simple_model = True
-            self.is_trained = True
-            return self._get_simple_metrics(df)
-    
-    def _get_simple_metrics(self, df):
-        """Calculate metrics for simple time-based model"""
-        predictions = []
-        for _, row in df.iterrows():
-            hour = int(str(row.get('Order_Time', '12:00')).split(':')[0])
-            pred = self.hour_averages.get(hour, self.overall_average)
-            predictions.append(pred)
+        X = self.prepare_features(training_data)
+        y = df['Delivery_Time'].values
         
-        predictions = np.array(predictions)
-        mae = mean_absolute_error(df['Delivery_Time'].values, predictions)
-        r2 = r2_score(df['Delivery_Time'].values, predictions)
+        if X.shape[0] == 0 or X.shape[1] == 0:
+            raise ValueError("Cannot extract features from training data")
+        
+        self.feature_names = X.columns.tolist()
+        
+        # Split data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, shuffle=True
+        )
+        
+        # Scale features
+        self.scaler = StandardScaler()
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+        
+        # Train Linear Regression
+        self.model = LinearRegression()
+        self.model.fit(X_train_scaled, y_train)
+        
+        # Evaluate
+        test_pred = self.model.predict(X_test_scaled)
+        test_r2 = r2_score(y_test, test_pred)
+        test_mae = mean_absolute_error(y_test, test_pred)
+        
+        self.is_trained = True
         
         return {
-            'train_r2': r2,
-            'test_r2': r2,
-            'train_mae': mae,
-            'test_mae': mae,
+            'test_r2': test_r2,
+            'test_mae': test_mae,
             'samples': len(df),
-            'model_type': 'Simple Time-Based'
+            'model_type': 'Linear Regression'
         }
     
     def predict(self, order_data):
@@ -301,37 +208,16 @@ class DeliveryTimePredictor:
         if not self.is_trained:
             raise ValueError("Model not trained")
         
-        if self.use_simple_model:
-            return self._predict_simple(order_data)
-        
         df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
         X = self.prepare_features(df)
         
         if len(X) == 0:
-            return np.array([self.overall_average] * len(df))
+            raise ValueError("Cannot extract features from order data")
         
         X_scaled = self.scaler.transform(X)
         predictions = self.model.predict(X_scaled)
         
         return np.maximum(predictions, 10)  # Minimum 10 minutes
-    
-    def _predict_simple(self, order_data):
-        """Simple time-based predictions"""
-        df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
-        
-        predictions = []
-        for _, row in df.iterrows():
-            if 'Order_Hour' in row:
-                hour = row['Order_Hour']
-            elif 'Order_Time' in row:
-                hour = int(str(row['Order_Time']).split(':')[0])
-            else:
-                hour = 12
-            
-            pred = self.hour_averages.get(hour, self.overall_average)
-            predictions.append(pred)
-        
-        return np.array(predictions)
     
     def predict_with_confidence(self, order_data, confidence=0.95):
         """Make predictions with confidence intervals"""
@@ -340,47 +226,14 @@ class DeliveryTimePredictor:
         
         predictions = self.predict(order_data)
         
-        if self.use_simple_model:
-            # Simple model: use standard deviation
-            df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
-            std_dev = 30.0  # Approximate standard deviation
-            margin = std_dev * 1.96  # 95% confidence interval
-            
-            return {
-                'predictions': predictions,
-                'lower_bound': np.maximum(predictions - margin, 10),
-                'upper_bound': predictions + margin,
-                'confidence': confidence
-            }
-        
-        # ML model: use prediction variance (if available)
-        if hasattr(self.model, 'predict') and isinstance(self.model, RandomForestRegressor):
-            # For Random Forest, use tree predictions variance
-            df = pd.DataFrame(order_data) if not isinstance(order_data, pd.DataFrame) else order_data
-            X = self.prepare_features(df)
-            X_scaled = self.scaler.transform(X)
-            
-            # Get predictions from all trees
-            tree_predictions = np.array([tree.predict(X_scaled) for tree in self.model.estimators_])
-            std_dev = np.std(tree_predictions, axis=0)
-            margin = std_dev * 1.96
-            
-            return {
-                'predictions': predictions,
-                'lower_bound': np.maximum(predictions - margin, 10),
-                'upper_bound': predictions + margin,
-                'confidence': confidence,
-                'std_dev': std_dev
-            }
-        else:
-            # For other models, use fixed margin based on training error
-            margin = 25.0  # Approximate margin
-            return {
-                'predictions': predictions,
-                'lower_bound': np.maximum(predictions - margin, 10),
-                'upper_bound': predictions + margin,
-                'confidence': confidence
-            }
+        # Use fixed margin based on training error
+        margin = 25.0
+        return {
+            'predictions': predictions,
+            'lower_bound': np.maximum(predictions - margin, 10),
+            'upper_bound': predictions + margin,
+            'confidence': confidence
+        }
     
     def save_model(self):
         """Save model to disk"""
@@ -393,10 +246,6 @@ class DeliveryTimePredictor:
             'model': self.model,
             'scaler': self.scaler,
             'feature_names': self.feature_names,
-            'hour_averages': self.hour_averages,
-            'day_averages': self.day_averages,
-            'overall_average': self.overall_average,
-            'use_simple_model': self.use_simple_model,
             'store_avg_dict': self.store_avg_dict,
             'vehicle_avg_dict': self.vehicle_avg_dict,
             'trained_date': datetime.now().isoformat(),
@@ -405,8 +254,6 @@ class DeliveryTimePredictor:
         }
         
         joblib.dump(model_data, self.model_path)
-        logging.info(f"Model saved to {self.model_path}")
-        print(f"Model saved to {self.model_path}")
     
     def load_model(self):
         """Load model from disk"""
@@ -418,10 +265,6 @@ class DeliveryTimePredictor:
             self.model = model_data.get('model')
             self.scaler = model_data.get('scaler')
             self.feature_names = model_data.get('feature_names')
-            self.hour_averages = model_data.get('hour_averages', {})
-            self.day_averages = model_data.get('day_averages', {})
-            self.overall_average = model_data.get('overall_average', 147.0)
-            self.use_simple_model = model_data.get('use_simple_model', False)
             self.store_avg_dict = model_data.get('store_avg_dict', {})
             self.vehicle_avg_dict = model_data.get('vehicle_avg_dict', {})
             self.training_samples = model_data.get('training_samples', 0)
@@ -437,22 +280,16 @@ class DeliveryTimePredictor:
     
     def get_feature_importance(self):
         """Get feature importance"""
-        if not self.is_trained or self.use_simple_model:
-            return [('order_hour', 1.0)]
-        
-        if hasattr(self.model, 'feature_importances_'):
-            # Random Forest
-            importances = self.model.feature_importances_
-        elif hasattr(self.model, 'coef_'):
-            # Ridge
-            importances = np.abs(self.model.coef_)
-        else:
+        if not self.is_trained:
             return []
         
-        feature_importance = list(zip(self.feature_names, importances))
-        feature_importance.sort(key=lambda x: abs(x[1]), reverse=True)
+        if hasattr(self.model, 'coef_'):
+            importances = np.abs(self.model.coef_)
+            feature_importance = list(zip(self.feature_names, importances))
+            feature_importance.sort(key=lambda x: abs(x[1]), reverse=True)
+            return feature_importance
         
-        return feature_importance
+        return []
 
 
 def train_model_from_database():
@@ -461,9 +298,7 @@ def train_model_from_database():
     
     repo = AzureSqlRepository()
     
-    print("Fetching delivery data from Azure SQL...")
-    
-    #CLEAN DATA QUERY - Filter out Delivery_Time = 0 and unrealistic times
+    # CLEAN DATA QUERY - Filter out Delivery_Time = 0 and unrealistic times
     query = """
         SELECT 
             dl.Order_ID,
@@ -490,8 +325,6 @@ def train_model_from_database():
     rows = repo.fetch_all(query)
     
     if not rows or len(rows) < 10:
-        print(f"Insufficient valid data. Found: {len(rows) if rows else 0} records")
-        print("   Need at least 10 valid deliveries with times between 20-400 minutes")
         repo.close()
         return None, None
     
@@ -502,7 +335,7 @@ def train_model_from_database():
         'Pickup_Time_Minutes', 'Order_Hour', 'Day_Of_Week'
     ])
     
-    # Calculate prep time in Python (safer than SQL)
+    # Calculate prep time
     training_data['Prep_Time_Minutes'] = (
         training_data['Pickup_Time_Minutes'] - training_data['Order_Time_Minutes']
     )
@@ -518,13 +351,7 @@ def train_model_from_database():
         (training_data['Prep_Time_Minutes'] <= 120)
     ]
     
-    print(f"   Found {len(training_data)} valid delivery records")
-    print(f"   Delivery time range: {training_data['Delivery_Time'].min():.0f} - {training_data['Delivery_Time'].max():.0f} minutes")
-    print(f"   Average delivery time: {training_data['Delivery_Time'].mean():.1f} minutes")
-    print(f"   Std deviation: {training_data['Delivery_Time'].std():.1f} minutes")
-    print(f"   Average prep time: {training_data['Prep_Time_Minutes'].mean():.1f} minutes")
-    
-    # Get store performance statistics - with quality filter
+    # Get store performance statistics
     store_stats_query = """
         SELECT 
             StoreID,
@@ -539,7 +366,7 @@ def train_model_from_database():
     """
     store_stats = repo.fetch_all(store_stats_query)
     
-    # Get vehicle performance statistics - with quality filter
+    # Get vehicle performance statistics
     vehicle_stats_query = """
         SELECT 
             VehicleID,
@@ -556,7 +383,7 @@ def train_model_from_database():
     
     repo.close()
     
-    # Calculate store average prep time in Python
+    # Calculate store average prep time
     store_prep_avg = training_data.groupby('StoreID')['Prep_Time_Minutes'].mean().to_dict()
     
     # Create lookup dictionaries
@@ -589,9 +416,6 @@ def train_model_from_database():
         lambda x: vehicle_avg_dict.get(x, {}).get('avg_time', training_data['Delivery_Time'].mean())
     )
     
-    print(f"   Stores in dataset: {training_data['StoreID'].nunique()}")
-    print(f"   Vehicles in dataset: {training_data['VehicleID'].nunique()}")
-    
     predictor = DeliveryTimePredictor()
     predictor.store_avg_dict = store_avg_dict
     predictor.vehicle_avg_dict = vehicle_avg_dict
@@ -604,22 +428,13 @@ def train_model_from_database():
 
 if __name__ == "__main__":
     if not ML_AVAILABLE:
-        print("    ML libraries not installed. Run: pip install scikit-learn pandas numpy joblib")
+        print("ML libraries not installed. Run: pip install scikit-learn pandas numpy joblib")
         sys.exit(1)
     
-    print("    Training delivery time prediction model...")
-    print("=" * 60)
     predictor, metrics = train_model_from_database()
     
     if predictor and metrics:
-        print("\n" + "=" * 60)
-        print("    Model training complete!")
-        print(f"   Model Type: {metrics['model_type']}")
-        print(f"   Test R²: {metrics['test_r2']:.3f}")
-        print(f"   Test MAE: {metrics['test_mae']:.2f} minutes")
-        print(f"   Training Samples: {metrics['samples']}")
-        print("\n    Model saved and ready to use!")
-        print("\nRestart your application and navigate to the Analytics tab")
-        print("to see forecasted delivery times")
+        print(f"R² Score: {metrics['test_r2']:.3f}")
+        print(f"MAE: {metrics['test_mae']:.2f} minutes")
     else:
-        print("\n    Model training failed. Check data quality.")
+        print("Training failed.")
