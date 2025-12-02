@@ -708,14 +708,16 @@ class AnalyticsView(tk.Frame):
             }
             limit = limit_map.get(filter_value, "TOP 100")
             
-            # Fetch delivery reports - convert TIME to minutes
+            # Fetch delivery reports
+            # Pickup_Time is TIME type (time of day), Delivery_Time is SMALLINT (duration in minutes)
             reports = self.repo.fetch_all(f"""
                 SELECT {limit}
                     Order_ID,
                     Order_Date,
                     VehicleID,
-                    DATEDIFF(MINUTE, '00:00:00', Pickup_Time) AS Pickup_Time_Minutes,
-                    DATEDIFF(MINUTE, '00:00:00', Delivery_Time) AS Delivery_Time_Minutes
+                    CAST(Pickup_Time AS VARCHAR(8)) AS Pickup_Time_Str,
+                    Delivery_Time,
+                    Status
                 FROM DeliveryLog
                 ORDER BY Order_Date DESC
             """)
@@ -723,27 +725,31 @@ class AnalyticsView(tk.Frame):
             if reports:
                 for idx, report in enumerate(reports):
                     order_id = report['Order_ID']
-                    date = str(report['Order_Date'])[:19] if report['Order_Date'] else "N/A"
+                    date = str(report['Order_Date'])[:10] if report['Order_Date'] else "N/A"
                     vehicle = report['VehicleID'] if report['VehicleID'] else "N/A"
                     
-                    # Handle minutes (already converted from TIME)
-                    pickup_minutes = report['Pickup_Time_Minutes']
-                    delivery_minutes = report['Delivery_Time_Minutes']
+                    # Pickup_Time is time of day (HH:MM:SS), show as HH:MM
+                    pickup_str = report['Pickup_Time_Str']
+                    pickup = pickup_str[:5] if pickup_str else "—"
                     
-                    pickup = f"{pickup_minutes} min" if pickup_minutes is not None else "—"
+                    # Delivery_Time is already in minutes (smallint)
+                    delivery_minutes = report['Delivery_Time']
                     delivery = f"{delivery_minutes} min" if delivery_minutes is not None else "—"
                     
-                    # Calculate total time and status
-                    if delivery_minutes is not None:
-                        total = (pickup_minutes or 0) + delivery_minutes
-                        total_time = f"{total} min"
+                    # Get status from DB or determine from data
+                    db_status = report['Status']
+                    if db_status:
+                        status = db_status
+                        total_time = f"{delivery_minutes} min" if delivery_minutes else status
+                    elif delivery_minutes is not None and delivery_minutes > 0:
                         status = "Completed"
-                    elif pickup_minutes is not None:
-                        total_time = "In Transit"
+                        total_time = f"{delivery_minutes} min"
+                    elif pickup_str:
                         status = "In Transit"
+                        total_time = "In Transit"
                     else:
-                        total_time = "Pending"
                         status = "Pending"
+                        total_time = "Pending"
                     
                     # Alternate row colors
                     tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
