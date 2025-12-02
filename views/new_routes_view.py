@@ -25,6 +25,9 @@ class NewRoutesView(tk.Frame):
         self.repo = None
         self.vehicles_data = []
         self.stores_data = []
+        self.drivers_data = []
+        self.products_data = []
+        self.drop_locations_data = []
         self._create_ui()
         self.after(100, self._load_form_data)
     
@@ -138,31 +141,66 @@ class NewRoutesView(tk.Frame):
         self.vehicle_combo.grid(row=2, column=1, sticky="ew", pady=5, padx=(10, 0))
         self.vehicle_combo.bind("<<ComboboxSelected>>", self._on_vehicle_selected)
         
-        # Store Selection (Multi-select)
-        self._create_form_field(fields_frame, "Delivery Stores:", 3, align_top=True)
+        # Driver Selection
+        self._create_form_field(fields_frame, "Assign Driver:", 3)
+        self.driver_var = tk.StringVar()
+        self.driver_combo = ttk.Combobox(
+            fields_frame,
+            textvariable=self.driver_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
+        )
+        self.driver_combo.grid(row=3, column=1, sticky="ew", pady=5, padx=(10, 0))
         
-        stores_container = tk.Frame(fields_frame, bg=config.BG_WHITE)
-        stores_container.grid(row=3, column=1, sticky="ew", pady=5, padx=(10, 0))
+        # Product Selection
+        self._create_form_field(fields_frame, "Product:", 4)
+        self.product_var = tk.StringVar()
+        self.product_combo = ttk.Combobox(
+            fields_frame,
+            textvariable=self.product_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
+        )
+        self.product_combo.grid(row=4, column=1, sticky="ew", pady=5, padx=(10, 0))
         
-        # Listbox with scrollbar for store selection
-        stores_scroll = tk.Scrollbar(stores_container, orient="vertical")
-        self.stores_listbox = tk.Listbox(
-            stores_container,
-            selectmode="multiple",
+        # Store Selection (Single store - origin)
+        self._create_form_field(fields_frame, "Pickup Store:", 5)
+        self.store_var = tk.StringVar()
+        self.store_combo = ttk.Combobox(
+            fields_frame,
+            textvariable=self.store_var,
+            state="readonly",
+            font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL)
+        )
+        self.store_combo.grid(row=5, column=1, sticky="ew", pady=5, padx=(10, 0))
+        
+        # Drop Location Selection (with search)
+        self._create_form_field(fields_frame, "Drop Location:", 6)
+        drop_container = tk.Frame(fields_frame, bg=config.BG_WHITE)
+        drop_container.grid(row=6, column=1, sticky="ew", pady=5, padx=(10, 0))
+        
+        self.drop_search_var = tk.StringVar()
+        self.drop_search_entry = tk.Entry(
+            drop_container,
+            textvariable=self.drop_search_var,
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
-            height=6,
-            yscrollcommand=stores_scroll.set,
             relief="solid",
             borderwidth=1
         )
-        stores_scroll.config(command=self.stores_listbox.yview)
-        self.stores_listbox.bind('<<ListboxSelect>>', lambda e: self._update_summary())
+        self.drop_search_entry.pack(side="left", fill="x", expand=True)
+        self.drop_search_entry.bind('<KeyRelease>', self._filter_drop_locations)
         
-        self.stores_listbox.pack(side="left", fill="both", expand=True)
-        stores_scroll.pack(side="right", fill="y")
+        self.drop_location_var = tk.StringVar()
+        self.drop_location_combo = ttk.Combobox(
+            drop_container,
+            textvariable=self.drop_location_var,
+            font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
+            width=30
+        )
+        self.drop_location_combo.pack(side="left", fill="x", expand=True, padx=(5, 0))
         
         # Order Date
-        self._create_form_field(fields_frame, "Order Date:", 4)
+        self._create_form_field(fields_frame, "Order Date:", 7)
         self.order_date_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -170,13 +208,13 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.order_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
-        self.order_date_entry.grid(row=4, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.order_date_entry.grid(row=7, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Priority
-        self._create_form_field(fields_frame, "Priority:", 5)
+        self._create_form_field(fields_frame, "Priority:", 8)
         self.priority_var = tk.StringVar(value="Normal")
         priority_frame = tk.Frame(fields_frame, bg=config.BG_WHITE)
-        priority_frame.grid(row=5, column=1, sticky="ew", pady=5, padx=(10, 0))
+        priority_frame.grid(row=8, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         for priority in ["Low", "Normal", "High", "Urgent"]:
             tk.Radiobutton(
@@ -190,7 +228,7 @@ class NewRoutesView(tk.Frame):
             ).pack(side="left", padx=5)
         
         # Estimated Pickup Time
-        self._create_form_field(fields_frame, "Est. Pickup Time (min):", 6)
+        self._create_form_field(fields_frame, "Est. Pickup Time (min):", 9)
         self.pickup_time_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -198,10 +236,10 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.pickup_time_entry.insert(0, "30")
-        self.pickup_time_entry.grid(row=6, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.pickup_time_entry.grid(row=9, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Estimated Delivery Time
-        self._create_form_field(fields_frame, "Est. Delivery Time (min):", 7)
+        self._create_form_field(fields_frame, "Est. Delivery Time (min):", 10)
         self.delivery_time_entry = tk.Entry(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_NORMAL),
@@ -209,10 +247,10 @@ class NewRoutesView(tk.Frame):
             borderwidth=1
         )
         self.delivery_time_entry.insert(0, "45")
-        self.delivery_time_entry.grid(row=7, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.delivery_time_entry.grid(row=10, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Notes
-        self._create_form_field(fields_frame, "Notes (Optional):", 8, align_top=True)
+        self._create_form_field(fields_frame, "Notes (Optional):", 11, align_top=True)
         self.notes_text = tk.Text(
             fields_frame,
             font=(config.FONT_FAMILY, config.FONT_SIZE_SMALL),
@@ -221,7 +259,7 @@ class NewRoutesView(tk.Frame):
             borderwidth=1,
             wrap="word"
         )
-        self.notes_text.grid(row=8, column=1, sticky="ew", pady=5, padx=(10, 0))
+        self.notes_text.grid(row=11, column=1, sticky="ew", pady=5, padx=(10, 0))
         
         # Configure grid weights
         fields_frame.columnconfigure(1, weight=1)
@@ -410,7 +448,7 @@ class NewRoutesView(tk.Frame):
         self.active_routes_label.pack(anchor="w", pady=2)
     
     def _load_form_data(self):
-        """Load vehicles and stores data from database"""
+        """Load vehicles, stores, drivers, products, and drop locations from database"""
         try:
             self.repo = AzureSqlRepository()
             
@@ -428,6 +466,34 @@ class NewRoutesView(tk.Frame):
                 ]
                 self.vehicle_combo['values'] = vehicle_options
             
+            # Load drivers
+            self.drivers_data = self.repo.fetch_all("""
+                SELECT DriverID, FirstName, LastName
+                FROM Drivers
+                ORDER BY DriverID
+            """)
+            
+            if self.drivers_data:
+                driver_options = [
+                    f"{d['DriverID']} - {d['FirstName']} {d['LastName']}"
+                    for d in self.drivers_data
+                ]
+                self.driver_combo['values'] = driver_options
+            
+            # Load products
+            self.products_data = self.repo.fetch_all("""
+                SELECT ProductID, ProdDescription
+                FROM Products
+                ORDER BY ProductID
+            """)
+            
+            if self.products_data:
+                product_options = [
+                    f"{p['ProductID']} - {p['ProdDescription']}"
+                    for p in self.products_data
+                ]
+                self.product_combo['values'] = product_options
+            
             # Load stores
             self.stores_data = self.repo.fetch_all("""
                 SELECT StoreID, lat, lon
@@ -436,10 +502,25 @@ class NewRoutesView(tk.Frame):
             """)
             
             if self.stores_data:
-                self.stores_listbox.delete(0, tk.END)
-                for store in self.stores_data:
-                    store_display = f"Store {store['StoreID']} (Lat: {store['lat']}, Lon: {store['lon']})"
-                    self.stores_listbox.insert(tk.END, store_display)
+                store_options = [
+                    f"Store {s['StoreID']} (Lat: {s['lat']:.4f}, Lon: {s['lon']:.4f})"
+                    for s in self.stores_data
+                ]
+                self.store_combo['values'] = store_options
+            
+            # Load drop locations (limit initial load for performance, use search for full list)
+            self.drop_locations_data = self.repo.fetch_all("""
+                SELECT TOP 500 DropLocationID, lat, lon
+                FROM DropLocations
+                ORDER BY DropLocationID
+            """)
+            
+            if self.drop_locations_data:
+                drop_options = [
+                    f"Drop {d['DropLocationID']} (Lat: {d['lat']:.4f}, Lon: {d['lon']:.4f})"
+                    for d in self.drop_locations_data
+                ]
+                self.drop_location_combo['values'] = drop_options
             
             # Update quick stats
             total_vehicles = len(self.vehicles_data) if self.vehicles_data else 0
@@ -454,12 +535,58 @@ class NewRoutesView(tk.Frame):
             active_routes = active_count[0]['Count'] if active_count else 0
             self.active_routes_label.config(text=f"Active routes today: {active_routes}")
             
-            logging.info(f"Loaded {total_vehicles} vehicles and {len(self.stores_data) if self.stores_data else 0} stores")
+            logging.info(f"Loaded {total_vehicles} vehicles, {len(self.drivers_data) if self.drivers_data else 0} drivers, "
+                        f"{len(self.products_data) if self.products_data else 0} products, "
+                        f"{len(self.stores_data) if self.stores_data else 0} stores, "
+                        f"{len(self.drop_locations_data) if self.drop_locations_data else 0} drop locations")
             
         except Exception as e:
             logging.error(f"Error loading form data: {e}")
             messagebox.showerror("Error", f"Failed to load form data:\n{str(e)[:150]}")
     
+    def _filter_drop_locations(self, event=None):
+        """Filter drop locations based on search text"""
+        search_text = self.drop_search_var.get().strip()
+        
+        if not search_text or len(search_text) < 2:
+            # Show initial 500 if no search
+            if self.drop_locations_data:
+                drop_options = [
+                    f"Drop {d['DropLocationID']} (Lat: {d['lat']:.4f}, Lon: {d['lon']:.4f})"
+                    for d in self.drop_locations_data
+                ]
+                self.drop_location_combo['values'] = drop_options
+            return
+        
+        try:
+            # Search by ID if numeric, otherwise search in a broader way
+            if search_text.isdigit():
+                query = f"""
+                    SELECT TOP 100 DropLocationID, lat, lon
+                    FROM DropLocations
+                    WHERE CAST(DropLocationID AS VARCHAR) LIKE '%{search_text}%'
+                    ORDER BY DropLocationID
+                """
+            else:
+                # Search by lat/lon pattern
+                query = f"""
+                    SELECT TOP 100 DropLocationID, lat, lon
+                    FROM DropLocations
+                    ORDER BY DropLocationID
+                """
+            
+            results = self.repo.fetch_all(query)
+            if results:
+                drop_options = [
+                    f"Drop {d['DropLocationID']} (Lat: {d['lat']:.4f}, Lon: {d['lon']:.4f})"
+                    for d in results
+                ]
+                self.drop_location_combo['values'] = drop_options
+                # Update the data reference for selection parsing
+                self.drop_locations_data = results
+        except Exception as e:
+            logging.error(f"Error filtering drop locations: {e}")
+
     def _on_vehicle_selected(self, event=None):
         """Handle vehicle selection"""
         selected_idx = self.vehicle_combo.current()
@@ -477,36 +604,31 @@ class NewRoutesView(tk.Frame):
     
     def _update_summary(self):
         """Update summary panel"""
-        # Update stores count
-        selected_stores = self.stores_listbox.curselection()
-        stores_count = len(selected_stores)
+        # Update selection count label
+        store_sel = self.store_combo.current() >= 0
+        drop_sel = self.drop_location_combo.current() >= 0
+        
+        selection_text = []
+        if store_sel:
+            selection_text.append("Store selected")
+        if drop_sel:
+            selection_text.append("Drop location selected")
+        
         self.stores_count_label.config(
-            text=f"{stores_count} store{'s' if stores_count != 1 else ''} selected"
+            text=", ".join(selection_text) if selection_text else "No selections"
         )
         
         # Update time estimates
         try:
-            # Simple dynamic estimate: 30 min base + 15 min per store
+            # Simple dynamic estimate
             base_pickup = 30
-            per_store_delivery = 15
+            base_delivery = 45
             
-            pickup_time = base_pickup
-            delivery_time = stores_count * per_store_delivery
-            
-            # Update entries if they haven't been manually edited (simple check)
-            # For now, just update the label to show the calculated estimate
-            
-            total_time = pickup_time + delivery_time
+            total_time = base_pickup + base_delivery
             
             self.time_estimate_label.config(
-                text=f"Total: {total_time} minutes\nPickup: {pickup_time} min | Delivery: {delivery_time} min"
+                text=f"Total: {total_time} minutes\nPickup: {base_pickup} min | Delivery: {base_delivery} min"
             )
-            
-            # Also update the entry fields with these estimates
-            self.pickup_time_entry.delete(0, tk.END)
-            self.pickup_time_entry.insert(0, str(pickup_time))
-            self.delivery_time_entry.delete(0, tk.END)
-            self.delivery_time_entry.insert(0, str(delivery_time))
             
         except ValueError:
             self.time_estimate_label.config(
@@ -518,8 +640,12 @@ class NewRoutesView(tk.Frame):
         if messagebox.askyesno("Clear Form", "Are you sure you want to clear all fields?"):
             self.order_id_entry.delete(0, tk.END)
             self.vehicle_var.set("")
+            self.driver_var.set("")
+            self.product_var.set("")
+            self.store_var.set("")
+            self.drop_location_var.set("")
+            self.drop_search_var.set("")
             self.vehicle_info_label.config(text="No vehicle selected")
-            self.stores_listbox.selection_clear(0, tk.END)
             self.order_date_entry.delete(0, tk.END)
             self.order_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
             self.priority_var.set("Normal")
@@ -545,9 +671,24 @@ class NewRoutesView(tk.Frame):
                 messagebox.showwarning("Validation Error", "Please select a vehicle")
                 return
             
-            selected_stores = self.stores_listbox.curselection()
-            if not selected_stores:
-                messagebox.showwarning("Validation Error", "Please select at least one delivery store")
+            driver_idx = self.driver_combo.current()
+            if driver_idx < 0:
+                messagebox.showwarning("Validation Error", "Please select a driver")
+                return
+            
+            product_idx = self.product_combo.current()
+            if product_idx < 0:
+                messagebox.showwarning("Validation Error", "Please select a product")
+                return
+            
+            store_idx = self.store_combo.current()
+            if store_idx < 0:
+                messagebox.showwarning("Validation Error", "Please select a pickup store")
+                return
+            
+            drop_idx = self.drop_location_combo.current()
+            if drop_idx < 0:
+                messagebox.showwarning("Validation Error", "Please select a drop location")
                 return
             
             order_date = self.order_date_entry.get().strip()
@@ -562,61 +703,63 @@ class NewRoutesView(tk.Frame):
                 messagebox.showwarning("Validation Error", "Pickup and delivery times must be numbers")
                 return
             
-            # Get vehicle ID
+            # Get IDs from selections
             vehicle = self.vehicles_data[vehicle_idx]
             vehicle_id = vehicle['VehicleID']
             
-            # Insert into DeliveryLog
-            # Note: Order_ID is nvarchar, so it needs quotes
-            # Note: Order_Time is required, so we provide a default value
-            # Note: Status is 'Pending' initially
-            # Note: Pickup_Time and Delivery_Time are NOT NULL
+            driver = self.drivers_data[driver_idx]
+            driver_id = driver['DriverID']
             
+            product = self.products_data[product_idx]
+            product_id = product['ProductID']
+            
+            store = self.stores_data[store_idx]
+            store_id = store['StoreID']
+            
+            drop_location = self.drop_locations_data[drop_idx]
+            drop_location_id = drop_location['DropLocationID']
+            
+            # Insert into DeliveryLog
             current_dt = datetime.now()
             current_time_str = current_dt.strftime("%H:%M:%S")
             
             # Calculate estimated pickup time (Time of day)
-            # Assuming pickup_time input is minutes from now
             est_pickup_dt = current_dt + timedelta(minutes=pickup_time)
             est_pickup_str = est_pickup_dt.strftime("%H:%M:%S")
             
-            # Delivery_Time is smallint (duration in minutes)
-            # We use the input delivery_time directly
-            
-            for i, store_idx in enumerate(selected_stores):
-                store = self.stores_data[store_idx]
-                store_id = store['StoreID']
-                
-                # Append suffix to Order ID for multiple stores if needed
-                final_order_id = f"{order_id}-{i+1}" if len(selected_stores) > 1 else order_id
-                
-                self.repo.execute(f"""
-                    INSERT INTO DeliveryLog (
-                        Order_ID, VehicleID, Order_Date, Order_Time, 
-                        Pickup_Time, Delivery_Time, StoreID, Status
-                    )
-                    VALUES (
-                        '{final_order_id}', 
-                        {vehicle_id}, 
-                        '{order_date}', 
-                        '{current_time_str}', 
-                        '{est_pickup_str}',
-                        {delivery_time},
-                        {store_id},
-                        'Pending'
-                    )
-                """)
+            self.repo.execute(f"""
+                INSERT INTO DeliveryLog (
+                    Order_ID, VehicleID, DriverID, ProductID, StoreID, DropLocationID,
+                    Order_Date, Order_Time, Pickup_Time, Delivery_Time, Status
+                )
+                VALUES (
+                    '{order_id}', 
+                    {vehicle_id}, 
+                    {driver_id},
+                    {product_id},
+                    {store_id},
+                    {drop_location_id},
+                    '{order_date}', 
+                    '{current_time_str}', 
+                    '{est_pickup_str}',
+                    {delivery_time},
+                    'Pending'
+                )
+            """)
             
             messagebox.showinfo(
                 "Success", 
                 f"Route created successfully!\n\n"
                 f"Order ID: {order_id}\n"
                 f"Vehicle: {vehicle_id}\n"
-                f"Stores: {len(selected_stores)}\n"
+                f"Driver: {driver_id}\n"
+                f"Product: {product_id}\n"
+                f"Store: {store_id} -> Drop: {drop_location_id}\n"
                 f"Est. Time: {pickup_time + delivery_time} min"
             )
             
-            logging.info(f"Route created: Order {order_id}, Vehicle {vehicle_id}, {len(selected_stores)} stores")
+            logging.info(f"Route created: Order {order_id}, Vehicle {vehicle_id}, Driver {driver_id}, "
+                        f"Product {product_id}, Store {store_id} -> Drop {drop_location_id}")
             
             # Clear form after successful creation
             self._clear_form()
@@ -631,29 +774,29 @@ class NewRoutesView(tk.Frame):
         1. Form-based optimization: Suggest best vehicle/times for current form selections
         2. Fleet-wide optimization: Optimize all pending deliveries across fleet
         """
-        selected_stores_indices = self.stores_listbox.curselection()
+        store_idx = self.store_combo.current()
         
-        # If stores are selected, optimize THIS route
-        if selected_stores_indices:
-            self._optimize_current_route(selected_stores_indices)
+        # If store is selected, optimize THIS route
+        if store_idx >= 0:
+            self._optimize_current_route(store_idx)
         else:
-            # If no stores selected, offer fleet-wide optimization
+            # If no store selected, offer fleet-wide optimization
             self._optimize_fleet_routes()
     
-    def _optimize_current_route(self, selected_stores_indices):
-        """Optimize the current route form based on selected stores"""
+    def _optimize_current_route(self, store_idx):
+        """Optimize the current route form based on selected store"""
         try:
-            store_ids = [str(self.stores_data[i]['StoreID']) for i in selected_stores_indices]
-            store_ids_str = ",".join(f"'{sid}'" for sid in store_ids)  # Add quotes for string IDs
+            store = self.stores_data[store_idx]
+            store_id = store['StoreID']
             
-            # 1. Find best vehicle (lowest avg delivery time for these stores)
+            # 1. Find best vehicle (lowest avg delivery time for this store)
             best_vehicle_query = f"""
                 SELECT TOP 1 
                     VehicleID, 
                     AVG(Delivery_Time) as AvgTime,
                     COUNT(*) as DeliveryCount
                 FROM DeliveryLog
-                WHERE StoreID IN ({store_ids_str})
+                WHERE StoreID = {store_id}
                   AND Delivery_Time IS NOT NULL
                   AND Delivery_Time > 0
                   AND Delivery_Time BETWEEN 20 AND 400
@@ -692,7 +835,7 @@ class NewRoutesView(tk.Frame):
                         )
                     ) as AvgPrep
                 FROM DeliveryLog
-                WHERE StoreID IN ({store_ids_str})
+                WHERE StoreID = {store_id}
                   AND Pickup_Time IS NOT NULL
                   AND Order_Time IS NOT NULL
                   AND Pickup_Time > Order_Time
@@ -709,7 +852,7 @@ class NewRoutesView(tk.Frame):
             delivery_query = f"""
                 SELECT AVG(Delivery_Time) as AvgTime
                 FROM DeliveryLog
-                WHERE StoreID IN ({store_ids_str})
+                WHERE StoreID = {store_id}
                   AND Delivery_Time IS NOT NULL
                   AND Delivery_Time > 0
                   AND Delivery_Time BETWEEN 20 AND 400
@@ -731,7 +874,7 @@ class NewRoutesView(tk.Frame):
             
             if vehicle_found:
                 msg += f"Vehicle: {vehicle_name}\n"
-                msg += f"   Best performer for these stores (avg: {int(avg_time)} min)\n\n"
+                msg += f"   Best performer for this store (avg: {int(avg_time)} min)\n\n"
             else:
                 msg += "Vehicle: No historical data found\n"
                 msg += "   (Need at least 3 deliveries per vehicle)\n\n"
@@ -740,14 +883,14 @@ class NewRoutesView(tk.Frame):
             msg += f"   Based on historical preparation patterns\n\n"
             
             msg += f"Delivery Time: {delivery_estimate} minutes\n"
-            msg += f"   Based on {len(selected_stores_indices)} store(s) average\n\n"
+            msg += f"   Based on Store {store_id} average\n\n"
             
             total_time = pickup_estimate + delivery_estimate
             msg += f"Total Estimated Time: {total_time} minutes\n"
             msg += f"   ({total_time // 60}h {total_time % 60}min)"
             
             messagebox.showinfo("Optimization Complete", msg)
-            logging.info(f"Route optimized: {len(selected_stores_indices)} stores, est. {total_time} min")
+            logging.info(f"Route optimized: Store {store_id}, est. {total_time} min")
                 
         except Exception as e:
             logging.error(f"Route optimization error: {e}")
