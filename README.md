@@ -102,7 +102,7 @@ repo.close()
 | Connection timeout | Verify server name includes `.database.windows.net` |
 
 ## Authors
-Jesse Hutchens
-Will Christopher
+Jesse Hutchens,
+Will Christopher,
 Justice Noback
 
